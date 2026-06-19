@@ -50,6 +50,8 @@ npm run words   # writes public/data/dictionary.txt and public/data/bank.txt
   `ENABLE_WORD_MOVE` in `main.js`.)_
 - **Double-click a blank cell** to block it (turns black; no letter may be placed
   there). Double-click it again to clear the block.
+- **Combos:** forming two or more words with a single placement (e.g. extending a
+  word *and* making a cross word) earns a bonus — *Double word!*, *Triple word!*, …
 - The board is **infinite** in every direction — **drag empty space** to pan
   around as the crossword grows beyond the viewport.
 

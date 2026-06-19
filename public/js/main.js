@@ -229,9 +229,18 @@ function setMessage(text, kind) {
   messageEl.className = `message ${kind || ''}`;
 }
 
+// Combo label for a placement that formed `count` words at once.
+function comboLabel(count) {
+  if (count === 2) return 'Double word!';
+  if (count === 3) return 'Triple word!';
+  if (count === 4) return 'Quadruple!';
+  return `${count}× combo!`;
+}
+
 // Flash the words formed by a placement and float the points gained above it.
-// `cells` are the placed word's cells; `gained` is the score delta.
-function celebratePlacement(cells, gained) {
+// `cells` are the placed word's cells; `gained` is the score delta; `combo` is
+// { count, bonus } when the placement formed two or more words.
+function celebratePlacement(cells, gained, combo) {
   if (!cells || !cells.length) return;
 
   // Flash every cell of the words this placement formed or extended.
@@ -257,6 +266,17 @@ function celebratePlacement(cells, gained) {
   pop.style.top = `${rect.top}px`;
   document.body.appendChild(pop);
   setTimeout(() => pop.remove(), 900);
+
+  // A multi-word placement gets a celebratory combo label above the points.
+  if (combo) {
+    const label = document.createElement('div');
+    label.className = 'combo-pop';
+    label.textContent = `${comboLabel(combo.count)} +${combo.bonus}`;
+    label.style.left = `${rect.left + rect.width / 2}px`;
+    label.style.top = `${rect.top - 26}px`;
+    document.body.appendChild(label);
+    setTimeout(() => label.remove(), 1100);
+  }
 }
 
 function clearPreview() {
@@ -343,7 +363,7 @@ const hooks = {
       refreshBoard();
       renderBank();
       updateStats();
-      celebratePlacement(result.cells, result.gained);
+      celebratePlacement(result.cells, result.gained, result.combo);
       setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${Math.round(game.score)}.` : '');
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');

@@ -105,6 +105,32 @@ class Grid {
     return [...runs].map((k) => k.split(':').pop());
   }
 
+  // The words a placement *forms* — maximal runs (length ≥ 2) through `cells`
+  // that contain at least one newly-filled cell. A pure crossing through an
+  // existing word does not re-form that word (no new tile in it), so this counts
+  // the placed word plus any words extended or created by abutment.
+  formedWords(cells, newCells) {
+    const isNew = new Set(newCells.map(({ row, col }) => `${row},${col}`));
+    const words = new Set();
+    for (const { row, col } of cells) {
+      const h = this.horizontalRun(row, col);
+      if (h.length >= 2) {
+        const sc = this.runStartCol(row, col);
+        let hasNew = false;
+        for (let i = 0; i < h.length; i++) if (isNew.has(`${row},${sc + i}`)) hasNew = true;
+        if (hasNew) words.add(`h:${row}:${sc}:${h}`);
+      }
+      const v = this.verticalRun(row, col);
+      if (v.length >= 2) {
+        const sr = this.runStartRow(row, col);
+        let hasNew = false;
+        for (let i = 0; i < v.length; i++) if (isNew.has(`${sr + i},${col}`)) hasNew = true;
+        if (hasNew) words.add(`v:${sr}:${col}:${v}`);
+      }
+    }
+    return [...words].map((k) => k.split(':').pop());
+  }
+
   // Every cell belonging to a maximal run (length ≥ 2) through any of the given
   // cells — i.e. the cells of the placed word plus any crossing words.
   runCellsThrough(cells) {

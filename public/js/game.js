@@ -29,6 +29,7 @@ class Game {
     this.score = 0;
     this.wordsPlaced = 0;
     this.nextId = 1;
+    this.bonus = 0; // accumulated combo bonus, added on top of the density score
     this.drawn = 0; // total bank words ever dealt; capped at MAX_WORDS
     this.maxWords = MAX_WORDS;
 
@@ -191,9 +192,15 @@ class Game {
   }
 
   // The score rewards both efficient packing and progress, scaled ×100 for
-  // readable whole numbers:  density / 0.5 * wordsPlaced * 100.
+  // readable whole numbers, plus accumulated multi-word combo bonuses.
   computeScore() {
-    return (this.density() / 0.5) * this.wordsPlaced * 100;
+    return (this.density() / 0.5) * this.wordsPlaced * 100 + this.bonus;
+  }
+
+  // Bonus for a placement that forms `count` words at once (triangular growth):
+  // 2 → 50, 3 → 150, 4 → 300, 5 → 500. One word forms no combo.
+  static comboBonus(count) {
+    return count >= 2 ? 50 * (count * (count - 1) / 2) : 0;
   }
 
   // Commit a placement: write to board, recompute the density score, refill the
@@ -206,7 +213,14 @@ class Game {
     if (!result.valid) return { ok: false, reason: result.reason };
 
     const before = this.score;
+    const placedCells = this.grid.cellsFor(item.word, row, col, orientation);
+    const newlyFilled = placedCells.filter(({ row: r, col: c }) => this.grid.get(r, c) === null);
     this.grid.placeWord(item.word, row, col, orientation);
+
+    // Count the words this placement formed; reward forming several at once.
+    const formed = this.grid.formedWords(placedCells, newlyFilled);
+    const comboBonus = Game.comboBonus(formed.length);
+    this.bonus += comboBonus;
     this.wordsPlaced++;
     this.score = this.computeScore();
 
@@ -218,7 +232,8 @@ class Game {
       ok: true,
       gained: this.score - before,
       score: this.score,
-      cells: this.grid.cellsFor(item.word, row, col, orientation),
+      cells: placedCells,
+      combo: formed.length >= 2 ? { count: formed.length, bonus: comboBonus } : null,
     };
   }
 }
