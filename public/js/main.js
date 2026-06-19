@@ -1,0 +1,455 @@
+// Wires the DOM to the Game: renders the board and bank, drives the drag
+// controller's hooks, and updates score/messages.
+
+const boardEl = document.getElementById('board');
+const bankEl = document.getElementById('bank');
+const scoreEl = document.getElementById('score');
+const wordsEl = document.getElementById('words');
+const messageEl = document.getElementById('message');
+
+// Assigned once the vetted word lists have loaded (see bootstrap at the bottom).
+let game;
+let drag;
+
+// Orientation chosen on the previous resolve, used as a tie-breaker so the ghost
+// doesn't flicker between equally-good horizontal/vertical placements.
+let lastOrientation = 'h';
+
+// The board is infinite. We render a window that always covers the viewport plus
+// a buffer of extra cells on every side, and re-render (recentered) as the user
+// pans so an edge is never reached — the grid appears endless. VIEW_BUFFER must
+// exceed the longest word so a word dropped in view is always fully rendered.
+const PITCH = window.CELL + 1; // cell size + 1px grid gap
+const VIEW_BUFFER = 12;        // extra cells rendered beyond the viewport per side
+const RECENTER_AT = 6;         // re-render when fewer than this many buffer cells remain
+
+// cellEls maps "row,col" (absolute, may be negative) → the cell <div>.
+let cellEls = new Map();
+// Top-left world coordinate and size of the currently rendered window.
+let viewR0 = 0;
+let viewC0 = 0;
+let viewRows = 0;
+let viewCols = 0;
+// Cells currently carrying a preview class, so we can clear them cheaply.
+let previewed = [];
+// Blue overlay marking the bounding box of all filled cells.
+let bboxEl = null;
+
+const cellElAt = (r, c) => cellEls.get(`${r},${c}`);
+
+// Crossword numbering: a filled cell is numbered when it begins an across word
+// (no filled cell to its left, a filled cell to its right) and/or a down word
+// (no filled cell above, a filled cell below). Numbers run in reading order.
+function computeNumbers() {
+  const numbers = {};
+  const b = game.grid.bounds();
+  if (!b) return numbers;
+  let n = 1;
+  for (let r = b.minR; r <= b.maxR; r++) {
+    for (let c = b.minC; c <= b.maxC; c++) {
+      if (!game.grid.get(r, c)) continue;
+      const startsAcross = !game.grid.get(r, c - 1) && game.grid.get(r, c + 1);
+      const startsDown = !game.grid.get(r - 1, c) && game.grid.get(r + 1, c);
+      if (startsAcross || startsDown) numbers[`${r},${c}`] = n++;
+    }
+  }
+  return numbers;
+}
+
+// Set a single cell's letter, fill/seed classes, and crossword number.
+function paintCell(cell, r, c, numbers, seedKeys) {
+  const letter = game.grid.get(r, c);
+  cell.classList.remove('filled', 'seed', 'blocked', 'preview-good', 'preview-bad');
+  cell.textContent = letter || ''; // also clears any previous number node
+  if (letter) {
+    cell.classList.add('filled');
+    if (seedKeys.has(`${r},${c}`)) cell.classList.add('seed');
+  } else if (game.grid.isBlocked(r, c)) {
+    cell.classList.add('blocked');
+  }
+  const num = numbers[`${r},${c}`];
+  if (num) {
+    const tag = document.createElement('span');
+    tag.className = 'num';
+    tag.textContent = num;
+    cell.appendChild(tag);
+  }
+}
+
+function paintAllCells() {
+  const seedKeys = new Set(game.seedCells.map((c) => `${c.row},${c.col}`));
+  const numbers = computeNumbers();
+  for (const [key, el] of cellEls) {
+    const comma = key.indexOf(',');
+    const r = Number(key.slice(0, comma));
+    const c = Number(key.slice(comma + 1));
+    paintCell(el, r, c, numbers, seedKeys);
+  }
+  updateBoundingBox();
+}
+
+// Position the blue overlay around the filled portion. Computed from world
+// coordinates (not cell elements) so it stays correct even when the filled area
+// extends past the rendered window.
+function updateBoundingBox() {
+  if (!bboxEl) return;
+  const b = game.grid.bounds();
+  if (!b) {
+    bboxEl.style.display = 'none';
+    return;
+  }
+  bboxEl.style.display = 'block';
+  bboxEl.style.left = `${(b.minC - viewC0) * PITCH}px`;
+  bboxEl.style.top = `${(b.minR - viewR0) * PITCH}px`;
+  bboxEl.style.width = `${(b.maxC - b.minC) * PITCH + window.CELL}px`;
+  bboxEl.style.height = `${(b.maxR - b.minR) * PITCH + window.CELL}px`;
+}
+
+// Render a window of `rows`×`cols` cells with its top-left at world (r0, c0).
+function renderWindow(r0, c0, rows, cols) {
+  viewR0 = r0;
+  viewC0 = c0;
+  viewRows = rows;
+  viewCols = cols;
+  boardEl.style.setProperty('--cols', cols);
+  boardEl.style.setProperty('--rows', rows);
+  boardEl.innerHTML = '';
+  cellEls = new Map();
+
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const r = r0 + i;
+      const c = c0 + j;
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      boardEl.appendChild(cell);
+      cellEls.set(`${r},${c}`, cell);
+    }
+  }
+
+  // Overlay drawn around the filled area; pointer-events:none so it never
+  // intercepts the drag hit-testing.
+  bboxEl = document.createElement('div');
+  bboxEl.className = 'bbox';
+  boardEl.appendChild(bboxEl);
+
+  paintAllCells();
+}
+
+// Viewport size, measured in cells.
+function viewportCells() {
+  const wrap = document.querySelector('.board-wrap');
+  const w = wrap.clientWidth || window.innerWidth;
+  const h = wrap.clientHeight || window.innerHeight;
+  return { cols: Math.ceil(w / PITCH), rows: Math.ceil(h / PITCH) };
+}
+
+// Scroll so that the given world point sits at the viewport center.
+function scrollWorldToCenter(worldRow, worldCol) {
+  const wrap = document.querySelector('.board-wrap');
+  wrap.scrollLeft = (worldCol - viewC0) * PITCH - wrap.clientWidth / 2;
+  wrap.scrollTop = (worldRow - viewR0) * PITCH - wrap.clientHeight / 2;
+}
+
+// The world point currently at the center of the viewport.
+function viewCenterWorld() {
+  const wrap = document.querySelector('.board-wrap');
+  return {
+    row: viewR0 + (wrap.scrollTop + wrap.clientHeight / 2) / PITCH,
+    col: viewC0 + (wrap.scrollLeft + wrap.clientWidth / 2) / PITCH,
+  };
+}
+
+// Render a window covering the viewport + VIEW_BUFFER, centered on a world point.
+function renderCenteredOn(worldRow, worldCol) {
+  const vc = viewportCells();
+  const cols = vc.cols + 2 * VIEW_BUFFER;
+  const rows = vc.rows + 2 * VIEW_BUFFER;
+  const c0 = Math.round(worldCol) - Math.floor(cols / 2);
+  const r0 = Math.round(worldRow) - Math.floor(rows / 2);
+  renderWindow(r0, c0, rows, cols);
+  scrollWorldToCenter(worldRow, worldCol);
+}
+
+// If the visible area has panned within RECENTER_AT cells of the rendered
+// window's edge, re-render centered on the current view so more grid appears.
+function ensureCoverage() {
+  const wrap = document.querySelector('.board-wrap');
+  const jMin = Math.floor(wrap.scrollLeft / PITCH);
+  const jMax = Math.ceil((wrap.scrollLeft + wrap.clientWidth) / PITCH);
+  const iMin = Math.floor(wrap.scrollTop / PITCH);
+  const iMax = Math.ceil((wrap.scrollTop + wrap.clientHeight) / PITCH);
+  const nearEdge =
+    jMin < RECENTER_AT || iMin < RECENTER_AT ||
+    viewCols - 1 - jMax < RECENTER_AT || viewRows - 1 - iMax < RECENTER_AT;
+  if (nearEdge) {
+    const c = viewCenterWorld();
+    renderCenteredOn(c.row, c.col);
+  }
+}
+
+// Repaint after a placement, then top up coverage in case the new word reached
+// near the rendered edge.
+function refreshBoard() {
+  paintAllCells();
+  ensureCoverage();
+}
+
+function renderBank() {
+  bankEl.innerHTML = '';
+  for (const item of game.bank) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.dataset.id = item.id;
+
+    const word = document.createElement('span');
+    word.className = 'word';
+    word.textContent = item.word;
+
+    chip.appendChild(word);
+    bankEl.appendChild(chip);
+
+    drag.attach(chip, item.id, item.word);
+  }
+}
+
+function updateStats() {
+  scoreEl.textContent = Math.round(game.score);
+  wordsEl.textContent = game.wordsPlaced;
+}
+
+function setMessage(text, kind) {
+  messageEl.textContent = text;
+  messageEl.className = `message ${kind || ''}`;
+}
+
+function clearPreview() {
+  for (const cell of previewed) cell.classList.remove('preview-good', 'preview-bad');
+  previewed = [];
+}
+
+// Highlight the cells a candidate word would occupy, colored by validity.
+function preview(word, row, col, orientation, valid) {
+  const cells = game.grid.cellsFor(word, row, col, orientation);
+  for (const { row: r, col: c } of cells) {
+    const cell = cellElAt(r, c);
+    if (!cell) continue;
+    cell.classList.add(valid ? 'preview-good' : 'preview-bad');
+    previewed.push(cell);
+  }
+}
+
+// The start cell of a word if its letter at `index` sits on `cell`.
+function startFor(cell, index, orientation) {
+  return orientation === 'h'
+    ? { row: cell.row, col: cell.col - index }
+    : { row: cell.row - index, col: cell.col };
+}
+
+// Auto-orientation with snapping. For each orientation we slide the word along
+// its axis so that ANY of its letters can land on the hovered cell — not just
+// the grabbed one. That lets the word snap onto an existing word and rotate
+// whenever a crossing actually fits there. Among valid placements we prefer the
+// most crossings, then the smallest shift from where the player grabbed (so the
+// piece stays near the cursor), then the previous orientation to avoid flicker.
+// When nothing is valid we fall back to the placement closest to snapping.
+function resolve(word, cell, grabIndex) {
+  const len = word.length;
+
+  const candidates = [];
+  for (const orientation of ['h', 'v']) {
+    for (let i = 0; i < len; i++) {
+      const s = startFor(cell, i, orientation);
+      const res = game.checkWord(word, s.row, s.col, orientation);
+      candidates.push({
+        orientation,
+        row: s.row,
+        col: s.col,
+        valid: res.valid,
+        crossings: res.crossings || 0,
+        overlaps: game.overlapCountWord(word, s.row, s.col, orientation),
+        shift: Math.abs(i - grabIndex),
+      });
+    }
+  }
+
+  const valids = candidates.filter((c) => c.valid);
+  const pool = valids.length ? valids : candidates;
+  const key = valids.length ? 'crossings' : 'overlaps';
+  pool.sort((a, b) =>
+    b[key] - a[key] ||
+    a.shift - b.shift ||
+    (a.orientation === lastOrientation ? -1 : 1)
+  );
+
+  const chosen = pool[0];
+  lastOrientation = chosen.orientation;
+  return chosen;
+}
+
+// Viewport top-left of a board cell, so the drag ghost can snap to the grid.
+function cellTopLeft(row, col) {
+  const el = cellElAt(row, col);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top };
+}
+
+// Hooks handed to the drag controller.
+const hooks = {
+  resolve,
+  cellTopLeft,
+  preview,
+  clearPreview,
+  commit: (id, row, col, orientation) => {
+    const result = game.place(id, row, col, orientation);
+    if (result.ok) {
+      refreshBoard();
+      renderBank();
+      updateStats();
+      setMessage('');
+    } else {
+      setMessage(result.reason || 'Invalid placement', 'error');
+    }
+  },
+};
+
+drag = new DragController(boardEl, hooks);
+
+// Lift the word under a just-grabbed board cell and start dragging it. The axis
+// (which crossing word to take, for a shared cell) is chosen by drag direction.
+function startWordMove(downEvt, cellEl, axis) {
+  const r = +cellEl.dataset.row;
+  const c = +cellEl.dataset.col;
+
+  let run = game.wordAt(r, c, axis);
+  if (run.word.length < 2) run = game.wordAt(r, c, axis === 'h' ? 'v' : 'h');
+  if (run.word.length < 2) return; // isolated single letter — nothing to move
+
+  // Index of the grabbed cell within the chosen run.
+  const grabIndex = run.orientation === 'h' ? c - run.col : r - run.row;
+
+  game.liftWord(run);
+  refreshBoard();
+  updateStats();
+
+  drag.beginBoardDrag(downEvt, {
+    word: run.word,
+    grabIndex,
+    onCommit: (nr, nc, no) => {
+      game.commitMove(run, nr, nc, no);
+      refreshBoard();
+      updateStats();
+      setMessage('');
+    },
+    onCancel: () => {
+      game.restoreLifted(run);
+      refreshBoard();
+      updateStats();
+      setMessage(`“${run.word}” returned to its spot`, 'error');
+    },
+  });
+}
+
+// One pointer handler for the board: drag a filled cell to move that word, drag
+// empty space to pan. Panning is incremental so a mid-pan re-render never jumps.
+function initBoardPointer(wrap) {
+  let panning = false;
+  let lastX = 0, lastY = 0;
+
+  wrap.addEventListener('pointermove', (e) => {
+    if (!panning) return;
+    wrap.scrollLeft -= e.clientX - lastX;
+    wrap.scrollTop -= e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+  });
+  const endPan = (e) => {
+    if (!panning) return;
+    panning = false;
+    wrap.classList.remove('panning');
+    try { wrap.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  };
+  wrap.addEventListener('pointerup', endPan);
+  wrap.addEventListener('pointercancel', endPan);
+
+  wrap.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const cellEl = e.target.closest('.cell');
+    if (cellEl && cellEl.classList.contains('filled')) {
+      // Wait for a small drag, then lift the word along the dominant axis. A
+      // plain click (no drag) leaves the word untouched.
+      const sx = e.clientX, sy = e.clientY;
+      const onThreshold = (ev) => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        window.removeEventListener('pointermove', onThreshold);
+        window.removeEventListener('pointerup', cancelThreshold);
+        startWordMove(ev, cellEl, Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v');
+      };
+      const cancelThreshold = () => {
+        window.removeEventListener('pointermove', onThreshold);
+        window.removeEventListener('pointerup', cancelThreshold);
+      };
+      window.addEventListener('pointermove', onThreshold);
+      window.addEventListener('pointerup', cancelThreshold);
+      return;
+    }
+    // Empty space → pan.
+    panning = true;
+    lastX = e.clientX; lastY = e.clientY;
+    wrap.classList.add('panning');
+    wrap.setPointerCapture(e.pointerId);
+  });
+
+  // Double-click a blank cell to block it (turns black, can't hold a letter);
+  // double-click a blocked cell to clear it. Cells with a letter are ignored.
+  wrap.addEventListener('dblclick', (e) => {
+    const cellEl = e.target.closest('.cell');
+    if (!cellEl) return;
+    const r = +cellEl.dataset.row;
+    const c = +cellEl.dataset.col;
+    if (game.grid.get(r, c)) return; // occupied by a letter
+    game.grid.toggleBlocked(r, c);
+    paintAllCells();
+  });
+
+  // Top up coverage as the view scrolls/pans (throttled to one check per frame).
+  let pending = false;
+  wrap.addEventListener('scroll', () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      ensureCoverage();
+    });
+  });
+}
+
+// Bootstrap: load the vetted word lists, then start the game and render.
+async function boot() {
+  setMessage('Loading word list…');
+  try {
+    await window.loadWords();
+  } catch (e) {
+    setMessage('Failed to load word list. Is the server running?', 'error');
+    throw e;
+  }
+
+  game = new Game();
+  renderBank();
+  updateStats();
+  setMessage('Drag a bank word onto the board, or drag a word already placed to move it. Drag empty space to pan.');
+
+  const wrap = document.querySelector('.board-wrap');
+  initBoardPointer(wrap);
+
+  // Render once layout is known, centered on the seed word, filling the viewport.
+  requestAnimationFrame(() => {
+    const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
+    renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
+  });
+}
+
+boot();

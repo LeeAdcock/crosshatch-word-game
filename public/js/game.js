@@ -1,0 +1,190 @@
+// Game state: the board, the bank, the score, and the endless placement loop.
+
+const BANK_SIZE = 11;
+
+class Game {
+  constructor() {
+    this.grid = new Grid();
+    this.bank = []; // array of { id, word }
+    this.score = 0;
+    this.wordsPlaced = 0;
+    this.nextId = 1;
+
+    // Bucket the bank pool by word length so we can guarantee variety.
+    this.buckets = {};
+    for (const w of window.BANK_POOL) {
+      (this.buckets[w.length] = this.buckets[w.length] || []).push(w);
+    }
+    this.lengths = Object.keys(this.buckets).map(Number).sort((a, b) => a - b);
+
+    this.seed();
+  }
+
+  // Random word of a given length (or any length when omitted).
+  drawWord(length) {
+    const pool = length ? this.buckets[length] : window.BANK_POOL;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  // How many bank words currently exist of each available length.
+  lengthCounts() {
+    const counts = {};
+    for (const len of this.lengths) counts[len] = 0;
+    for (const item of this.bank) counts[item.word.length]++;
+    return counts;
+  }
+
+  // Desired number of bank words of each length: two of every length, plus one
+  // extra of the longest so the bank always holds an additional long word.
+  targetFor(len) {
+    return len === this.lengths[this.lengths.length - 1] ? 3 : 2;
+  }
+
+  // The length whose bank count is furthest below its target (ties broken
+  // randomly). Filling this keeps the spread of lengths and the guaranteed
+  // extra long word — with 11 slots over lengths 3–7 that's 2/2/2/2/3.
+  varietyLength() {
+    const counts = this.lengthCounts();
+    let best = [];
+    let bestDeficit = -Infinity;
+    for (const len of this.lengths) {
+      const deficit = this.targetFor(len) - counts[len];
+      if (deficit > bestDeficit) {
+        bestDeficit = deficit;
+        best = [len];
+      } else if (deficit === bestDeficit) {
+        best.push(len);
+      }
+    }
+    return best[Math.floor(Math.random() * best.length)];
+  }
+
+  // Place a starting seed word (a mid-length word) horizontally around the
+  // origin, then fill the bank with a variety of lengths.
+  seed() {
+    const seedLen = this.lengths.includes(5) ? 5 : this.lengths[Math.floor(this.lengths.length / 2)];
+    const word = this.drawWord(seedLen);
+    const row = 0;
+    const col = -Math.floor(word.length / 2);
+    this.grid.placeWord(word, row, col, 'h');
+    this.seedCells = this.grid.cellsFor(word, row, col, 'h');
+    for (let i = 0; i < BANK_SIZE; i++) this.addBankWord();
+    this.score = this.computeScore();
+  }
+
+  addBankWord() {
+    this.bank.push({ id: this.nextId++, word: this.drawWord(this.varietyLength()) });
+  }
+
+  bankItem(id) {
+    return this.bank.find((b) => b.id === id);
+  }
+
+  // Validate a candidate placement of any word against the current board (left
+  // untouched). The first word on an empty board may go anywhere; this matters
+  // when a moved word was the board's only word.
+  checkWord(word, row, col, orientation) {
+    return window.validatePlacement(this.grid, word, row, col, orientation, this.grid.isEmpty());
+  }
+
+  // How many of the word's cells land on a matching existing letter, ignoring
+  // overall validity. Used to choose which orientation is "closest to snapping"
+  // onto an existing word during auto-rotate.
+  overlapCountWord(word, row, col, orientation) {
+    let n = 0;
+    for (const { row: r, col: c, letter } of this.grid.cellsFor(word, row, col, orientation)) {
+      if (this.grid.get(r, c) === letter) n++;
+    }
+    return n;
+  }
+
+  // The word run through (row, col) along an axis ('h' or 'v'), as
+  // { word, row, col, orientation } where row,col is the run's start cell.
+  wordAt(row, col, axis) {
+    if (axis === 'h') {
+      return { word: this.grid.horizontalRun(row, col), row, col: this.grid.runStartCol(row, col), orientation: 'h' };
+    }
+    return { word: this.grid.verticalRun(row, col), row: this.grid.runStartRow(row, col), col, orientation: 'v' };
+  }
+
+  // Lift a word off the board so it can be dragged: clear the cells it occupies
+  // EXCEPT those shared with a crossing word (length ≥ 2 perpendicular run),
+  // which belong to that other word. Returns the run descriptor for restoring.
+  liftWord(run) {
+    const cells = this.grid.cellsFor(run.word, run.row, run.col, run.orientation);
+    const toClear = [];
+    for (const { row, col } of cells) {
+      const perp = run.orientation === 'h'
+        ? this.grid.verticalRun(row, col)
+        : this.grid.horizontalRun(row, col);
+      if (perp.length < 2) toClear.push({ row, col });
+    }
+    for (const { row, col } of toClear) this.grid.set(row, col, null);
+    this.score = this.computeScore();
+    return run;
+  }
+
+  // Put a lifted word back exactly where it was (invalid drop or cancel).
+  restoreLifted(run) {
+    this.grid.placeWord(run.word, run.row, run.col, run.orientation);
+    this.score = this.computeScore();
+  }
+
+  // Commit a lifted word at a new, already-validated position.
+  commitMove(run, row, col, orientation) {
+    this.grid.placeWord(run.word, row, col, orientation);
+    this.score = this.computeScore();
+  }
+
+  // Sum of Scrabble letter values over every filled cell (each cell once, so
+  // crossing letters are not double-counted).
+  boardLetterSum() {
+    let sum = 0;
+    for (const letter of this.grid.cells.values()) sum += window.LETTER_SCORES[letter] || 0;
+    return sum;
+  }
+
+  // Cells in the bounding box of the filled area (filled + empty cells inside).
+  boundingArea() {
+    const b = this.grid.bounds();
+    if (!b) return 0;
+    return (b.maxR - b.minR + 1) * (b.maxC - b.minC + 1);
+  }
+
+  // Point density: total letter value per bounding-box cell. Packing high-value
+  // letters tightly raises it; spreading words out lowers it.
+  density() {
+    const area = this.boundingArea();
+    return area ? this.boardLetterSum() / area : 0;
+  }
+
+  // The score rewards both efficient packing and progress, scaled ×100 for
+  // readable whole numbers:  density / 0.5 * wordsPlaced * 100.
+  computeScore() {
+    return (this.density() / 0.5) * this.wordsPlaced * 100;
+  }
+
+  // Commit a placement: write to board, recompute the density score, refill the
+  // bank slot. Returns { ok, gained, score } or { ok: false, reason }.
+  place(id, row, col, orientation) {
+    const item = this.bankItem(id);
+    if (!item) return { ok: false, reason: 'Unknown word' };
+
+    const result = window.validatePlacement(this.grid, item.word, row, col, orientation);
+    if (!result.valid) return { ok: false, reason: result.reason };
+
+    const before = this.score;
+    this.grid.placeWord(item.word, row, col, orientation);
+    this.wordsPlaced++;
+    this.score = this.computeScore();
+
+    // Remove from bank and draw a replacement (endless).
+    this.bank = this.bank.filter((b) => b.id !== id);
+    this.addBankWord();
+
+    return { ok: true, gained: this.score - before, score: this.score };
+  }
+}
+
+window.Game = Game;
+window.BANK_SIZE = BANK_SIZE;
