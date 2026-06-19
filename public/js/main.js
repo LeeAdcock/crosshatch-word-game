@@ -275,7 +275,7 @@ function celebratePlacement(cells, gained, combo) {
     label.style.left = `${rect.left + rect.width / 2}px`;
     label.style.top = `${rect.top - 26}px`;
     document.body.appendChild(label);
-    setTimeout(() => label.remove(), 1100);
+    setTimeout(() => label.remove(), 2200);
   }
 }
 
