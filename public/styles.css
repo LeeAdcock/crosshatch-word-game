@@ -70,6 +70,8 @@ kbd {
 .board-frame {
   position: relative;
   flex: 1 1 auto;
+  min-width: 0; /* allow the flex item to shrink below the board's huge width */
+  overflow: hidden;
   height: calc(100vh - 170px);
 }
 .board-frame::after {
