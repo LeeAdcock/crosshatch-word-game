@@ -59,7 +59,7 @@ function computeNumbers() {
 // Set a single cell's letter, fill/seed classes, and crossword number.
 function paintCell(cell, r, c, numbers, seedKeys) {
   const letter = game.grid.get(r, c);
-  cell.classList.remove('filled', 'seed', 'blocked', 'preview-good', 'preview-bad');
+  cell.classList.remove('filled', 'seed', 'blocked', 'flash', 'preview-good', 'preview-bad');
   cell.textContent = letter || ''; // also clears any previous number node
   if (letter) {
     cell.classList.add('filled');
@@ -228,6 +228,36 @@ function setMessage(text, kind) {
   messageEl.className = `message ${kind || ''}`;
 }
 
+// Flash the words formed by a placement and float the points gained above it.
+// `cells` are the placed word's cells; `gained` is the score delta.
+function celebratePlacement(cells, gained) {
+  if (!cells || !cells.length) return;
+
+  // Flash every cell of the words this placement formed or extended.
+  const runCells = game.grid.runCellsThrough(cells);
+  const flashed = [];
+  for (const { row, col } of runCells) {
+    const el = cellElAt(row, col);
+    if (!el) continue;
+    el.classList.add('flash');
+    flashed.push(el);
+  }
+  setTimeout(() => flashed.forEach((el) => el.classList.remove('flash')), 700);
+
+  // Float a "+N" popup above the middle of the placed word.
+  const mid = cells[Math.floor(cells.length / 2)];
+  const anchor = cellElAt(mid.row, mid.col);
+  if (!anchor) return;
+  const rect = anchor.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.className = `score-pop ${gained >= 0 ? 'pos' : 'neg'}`;
+  pop.textContent = `${gained >= 0 ? '+' : '−'}${Math.abs(Math.round(gained))}`;
+  pop.style.left = `${rect.left + rect.width / 2}px`;
+  pop.style.top = `${rect.top}px`;
+  document.body.appendChild(pop);
+  setTimeout(() => pop.remove(), 900);
+}
+
 function clearPreview() {
   for (const cell of previewed) cell.classList.remove('preview-good', 'preview-bad');
   previewed = [];
@@ -312,6 +342,7 @@ const hooks = {
       refreshBoard();
       renderBank();
       updateStats();
+      celebratePlacement(result.cells, result.gained);
       setMessage('');
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
@@ -342,9 +373,11 @@ function startWordMove(downEvt, cellEl, axis) {
     word: run.word,
     grabIndex,
     onCommit: (nr, nc, no) => {
+      const before = game.score;
       game.commitMove(run, nr, nc, no);
       refreshBoard();
       updateStats();
+      celebratePlacement(game.grid.cellsFor(run.word, nr, nc, no), game.score - before);
       setMessage('');
     },
     onCancel: () => {

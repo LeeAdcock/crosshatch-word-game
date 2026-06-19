@@ -105,6 +105,28 @@ class Grid {
     return [...runs].map((k) => k.split(':').pop());
   }
 
+  // Every cell belonging to a maximal run (length ≥ 2) through any of the given
+  // cells — i.e. the cells of the placed word plus any crossing words.
+  runCellsThrough(cells) {
+    const out = new Set();
+    for (const { row, col } of cells) {
+      const h = this.horizontalRun(row, col);
+      if (h.length >= 2) {
+        const sc = this.runStartCol(row, col);
+        for (let i = 0; i < h.length; i++) out.add(`${row},${sc + i}`);
+      }
+      const v = this.verticalRun(row, col);
+      if (v.length >= 2) {
+        const sr = this.runStartRow(row, col);
+        for (let i = 0; i < v.length; i++) out.add(`${sr + i},${col}`);
+      }
+    }
+    return [...out].map((k) => {
+      const comma = k.indexOf(',');
+      return { row: Number(k.slice(0, comma)), col: Number(k.slice(comma + 1)) };
+    });
+  }
+
   runStartCol(row, col) {
     let start = col;
     while (this.get(row, start - 1)) start--;

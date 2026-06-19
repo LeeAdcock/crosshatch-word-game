@@ -182,7 +182,12 @@ class Game {
     this.bank = this.bank.filter((b) => b.id !== id);
     this.addBankWord();
 
-    return { ok: true, gained: this.score - before, score: this.score };
+    return {
+      ok: true,
+      gained: this.score - before,
+      score: this.score,
+      cells: this.grid.cellsFor(item.word, row, col, orientation),
+    };
   }
 }
 

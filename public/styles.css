@@ -134,6 +134,33 @@ kbd {
 .cell.preview-good { background: var(--good); color: var(--ink); }
 .cell.preview-bad { background: var(--bad); color: var(--ink); }
 
+/* Brief pulse on the words a placement just formed. */
+.cell.flash { animation: cellFlash 0.7s ease-out; }
+@keyframes cellFlash {
+  0% { background: #9ec5ff; }
+  100% { background: var(--paper); }
+}
+
+/* Floating "+N" score popup that rises and fades above a placement. */
+.score-pop {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  font-family: system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 22px;
+  pointer-events: none;
+  z-index: 2000;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  animation: floatUp 0.9s ease-out forwards;
+}
+.score-pop.pos { color: #1e6fff; }
+.score-pop.neg { color: #c0392b; }
+@keyframes floatUp {
+  0% { opacity: 0; transform: translate(-50%, -40%); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -180%); }
+}
+
 .bank-wrap {
   flex: 0 0 220px;
   background: var(--paper);
