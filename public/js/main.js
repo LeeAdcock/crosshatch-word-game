@@ -219,8 +219,13 @@ function renderBank() {
   }
 }
 
+// Whole number with comma thousands separators, e.g. 1234 -> "1,234".
+function commafy(n) {
+  return Math.round(n).toLocaleString('en-US');
+}
+
 function updateStats() {
-  scoreEl.textContent = Math.round(game.score);
+  scoreEl.textContent = commafy(game.score);
   wordsEl.textContent = `${game.wordsPlaced} / ${game.maxWords}`;
 }
 
@@ -261,7 +266,7 @@ function celebratePlacement(cells, gained, combo) {
   const rect = anchor.getBoundingClientRect();
   const pop = document.createElement('div');
   pop.className = `score-pop ${gained >= 0 ? 'pos' : 'neg'}`;
-  pop.textContent = `${gained >= 0 ? '+' : '−'}${Math.abs(Math.round(gained))}`;
+  pop.textContent = `${gained >= 0 ? '+' : '−'}${commafy(Math.abs(gained))}`;
   pop.style.left = `${rect.left + rect.width / 2}px`;
   pop.style.top = `${rect.top}px`;
   document.body.appendChild(pop);
@@ -364,7 +369,7 @@ const hooks = {
       renderBank();
       updateStats();
       celebratePlacement(result.cells, result.gained, result.combo);
-      setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${Math.round(game.score)}.` : '');
+      setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${commafy(game.score)}.` : '');
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }
@@ -496,7 +501,7 @@ async function boot() {
   game = new Game();
   renderBank();
   updateStats();
-  setMessage('Drag a bank word onto the board. Drag the board to pan; double-click a blank cell to block it.');
+  setMessage('');
 
   const wrap = document.querySelector('.board-wrap');
   initBoardPointer(wrap);

@@ -1,7 +1,7 @@
 // Game state: the board, the bank, the score, and the placement loop.
 
 const BANK_SIZE = 10;
-const MAX_WORDS = 50; // a game offers at most this many words (a daily puzzle)
+const MAX_WORDS = 25; // a game offers at most this many words (a daily puzzle)
 
 // Deterministic PRNG (fnv-1a hash → mulberry32) seeded from a string, so a given
 // seed always produces the same board.
@@ -52,7 +52,7 @@ class Game {
 
   // Random word of a given length (or any length when omitted), never repeating
   // a word already dealt this game. Falls back to the full pool only if every
-  // word of that length has been used (won't happen within the 50-word cap).
+  // word of that length has been used (won't happen within the 25-word cap).
   drawWord(length) {
     const pool = length ? this.buckets[length] : window.BANK_POOL;
     let candidates = pool.filter((w) => !this.used.has(w));
