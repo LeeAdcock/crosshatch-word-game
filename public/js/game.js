@@ -1,6 +1,6 @@
 // Game state: the board, the bank, the score, and the placement loop.
 
-const BANK_SIZE = 11;
+const BANK_SIZE = 10;
 const MAX_WORDS = 50; // a game offers at most this many words (a daily puzzle)
 
 // Deterministic PRNG (fnv-1a hash → mulberry32) seeded from a string, so a given
@@ -70,15 +70,14 @@ class Game {
     return counts;
   }
 
-  // Desired number of bank words of each length: two of every length, plus one
-  // extra of the longest so the bank always holds an additional long word.
-  targetFor(len) {
-    return len === this.lengths[this.lengths.length - 1] ? 3 : 2;
+  // Desired number of bank words of each length: two of every length (with 10
+  // slots over lengths 3–7, that's 2/2/2/2/2).
+  targetFor() {
+    return 2;
   }
 
   // The length whose bank count is furthest below its target (ties broken
-  // randomly). Filling this keeps the spread of lengths and the guaranteed
-  // extra long word — with 11 slots over lengths 3–7 that's 2/2/2/2/3.
+  // randomly). Filling this keeps the bank's spread of word lengths even.
   varietyLength() {
     const counts = this.lengthCounts();
     let best = [];

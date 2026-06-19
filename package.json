@@ -1,7 +1,7 @@
 {
-  "name": "reverse-scrabble",
+  "name": "crosshatch",
   "version": "1.0.0",
-  "description": "A browser crossword-style word game served by a minimal Node static server.",
+  "description": "Crosshatch — a browser crossword-style word game served by a minimal Node static server.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
