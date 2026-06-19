@@ -1,3 +1,10 @@
+@font-face {
+  font-family: 'Quicksand';
+  src: url('./fonts/Quicksand-VariableFont_wght.ttf') format('truetype');
+  font-weight: 300 700;
+  font-display: swap;
+}
+
 :root {
   --cell: 32px;
   --ink: #111;          /* black text, lines, borders */
@@ -14,7 +21,7 @@
 
 body {
   margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: 'Quicksand', system-ui, sans-serif;
   background: var(--paper);
   color: var(--ink);
 }
@@ -35,6 +42,23 @@ body {
   letter-spacing: 1px;
   text-transform: uppercase;
   color: var(--ink);
+}
+
+/* Brand mark left of the title, matched to the text height. */
+.brand-mark {
+  height: 1em;
+  width: auto;
+  margin-right: 0.4em;
+  vertical-align: -0.15em;
+}
+
+.tagline {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #1e6fff;
 }
 
 .stats { display: flex; gap: 22px; }
@@ -136,7 +160,7 @@ kbd {
 }
 
 .cell.filled { background: var(--paper); color: var(--ink); }
-.cell.seed { background: var(--seed); }
+.cell.seed { background: #1e6fff; color: #fff; } /* first-placed word, matching the box */
 .cell.blocked { background: var(--ink); } /* black, blocked from holding a letter */
 
 /* Small crossword clue number in the cell's top-left corner. */
@@ -144,12 +168,13 @@ kbd {
   position: absolute;
   top: 1px;
   left: 2px;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Quicksand', system-ui, sans-serif;
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
   color: var(--ink);
 }
+.cell.seed .num { color: #fff; } /* readable on the blue seed tiles */
 
 .cell.preview-good { background: var(--good); color: var(--ink); }
 .cell.preview-bad { background: var(--bad); color: var(--ink); }
@@ -165,7 +190,7 @@ kbd {
 .score-pop {
   position: fixed;
   transform: translate(-50%, -50%);
-  font-family: system-ui, sans-serif;
+  font-family: 'Quicksand', system-ui, sans-serif;
   font-weight: 800;
   font-size: 22px;
   pointer-events: none;
@@ -185,7 +210,7 @@ kbd {
 .combo-pop {
   position: fixed;
   transform: translate(-50%, -50%);
-  font-family: system-ui, sans-serif;
+  font-family: 'Quicksand', system-ui, sans-serif;
   font-weight: 800;
   font-size: 18px;
   white-space: nowrap;

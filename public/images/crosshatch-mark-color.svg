@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1000" viewBox="0 0 1000 1000">
+<rect width="1000" height="1000" rx="200.00" fill="#15171c"></rect>
+<rect x="11.80" y="11.80" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="209.44" y="11.80" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="407.08" y="11.80" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="604.72" y="11.80" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="802.36" y="11.80" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="11.80" y="209.44" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="209.44" y="209.44" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="407.08" y="209.44" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="604.72" y="209.44" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="802.36" y="209.44" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="11.80" y="407.08" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="209.44" y="407.08" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="407.08" y="407.08" width="185.84" height="185.84" rx="11.15" fill="#e1492b"></rect>
+<rect x="604.72" y="407.08" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="802.36" y="407.08" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="11.80" y="604.72" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="209.44" y="604.72" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="407.08" y="604.72" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="604.72" y="604.72" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="802.36" y="604.72" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="11.80" y="802.36" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+<rect x="209.44" y="802.36" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="407.08" y="802.36" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="604.72" y="802.36" width="185.84" height="185.84" rx="11.15" fill="#f4f2ec"></rect>
+<rect x="802.36" y="802.36" width="185.84" height="185.84" rx="11.15" fill="#15171c"></rect>
+</svg>
