@@ -43,8 +43,9 @@ npm run words   # writes public/data/dictionary.txt and public/data/bank.txt
 - The word **rotates automatically** as you drag, picking whichever orientation
   (horizontal or vertical) snaps across an existing word at the cursor.
 - The drop preview is **green** when the placement is legal, **red** when it is not.
-- A legal word must overlap at least one existing letter and may not create any
-  non-word runs. Drop it to place it; press **Esc** to cancel a drag.
+- A legal word must **connect** to an existing word — by crossing it **or** sitting
+  adjacent and building new words (e.g. `CAT` + `S` → `CATS`, or abutting to form
+  `TO`) — and may not create any non-word runs. Drop it to place it; **Esc** cancels.
 - _(Moving a placed word by dragging it is currently disabled — toggle
   `ENABLE_WORD_MOVE` in `main.js`.)_
 - **Double-click a blank cell** to block it (turns black; no letter may be placed

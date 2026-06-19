@@ -34,9 +34,23 @@ function validatePlacement(grid, word, row, col, orientation, firstMove = false)
     overlaps++;
   }
 
-  // 3. Must connect to an existing word (unless this is the first move).
-  if (!firstMove && overlaps === 0) {
-    return { valid: false, reason: 'Word must overlap an existing word' };
+  // 3. Must connect to existing structure (unless this is the first move) —
+  //    either by overlapping a letter or by sitting orthogonally adjacent to one
+  //    (which forms a new word by abutment, e.g. CAT + S -> CATS, or CAT + O ->
+  //    the down word TO). Any words formed are still validated in step 4.
+  const cellKeys = new Set(cells.map(({ row: r, col: c }) => `${r},${c}`));
+  let connected = overlaps > 0;
+  for (const { row: r, col: c } of cells) {
+    if (connected) break;
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (grid.get(r + dr, c + dc) && !cellKeys.has(`${r + dr},${c + dc}`)) {
+        connected = true;
+        break;
+      }
+    }
+  }
+  if (!firstMove && !connected) {
+    return { valid: false, reason: 'Word must connect to an existing word' };
   }
 
   // A word laid directly on top of an identical existing run is a no-op.
