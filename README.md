@@ -1,4 +1,4 @@
-# Reverse Crossword
+# Crosshatch
 
 A browser word game. The board starts with one seed word; you drag words from the
 bank onto the grid so each new word **crosses an existing word** (crossword style),

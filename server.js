@@ -1,4 +1,4 @@
-// Minimal static file server for Reverse Crossword.
+// Minimal static file server for Crosshatch.
 // No game logic lives here — it only serves files from ./public.
 //
 //   node server.js            # serves on http://localhost:8000
@@ -61,5 +61,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Reverse Crossword running at http://localhost:${PORT}`);
+  console.log(`Crosshatch running at http://localhost:${PORT}`);
 });

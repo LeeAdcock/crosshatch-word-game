@@ -1,4 +1,4 @@
-// Board model for Reverse Crossword.
+// Board model for Crosshatch.
 //
 // The grid is unbounded and infinite in every direction (rows and columns may be
 // negative). It is stored sparsely as a Map keyed "row,col" → letter, so only
