@@ -98,11 +98,14 @@ function updateBoundingBox() {
     bboxEl.style.display = 'none';
     return;
   }
+  // Inflate the box 5px on every side, so it sits just outside the cells (it no
+  // longer aligns to the grid exactly — intentional).
+  const pad = 5;
+  bboxEl.style.left = `${(b.minC - viewC0) * PITCH - pad}px`;
+  bboxEl.style.top = `${(b.minR - viewR0) * PITCH - pad}px`;
+  bboxEl.style.width = `${(b.maxC - b.minC) * PITCH + window.CELL + 2 * pad}px`;
+  bboxEl.style.height = `${(b.maxR - b.minR) * PITCH + window.CELL + 2 * pad}px`;
   bboxEl.style.display = 'block';
-  bboxEl.style.left = `${(b.minC - viewC0) * PITCH}px`;
-  bboxEl.style.top = `${(b.minR - viewR0) * PITCH}px`;
-  bboxEl.style.width = `${(b.maxC - b.minC) * PITCH + window.CELL}px`;
-  bboxEl.style.height = `${(b.maxR - b.minR) * PITCH + window.CELL}px`;
 }
 
 // Render a window of `rows`×`cols` cells with its top-left at world (r0, c0).
