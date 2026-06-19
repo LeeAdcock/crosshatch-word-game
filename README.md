@@ -2,8 +2,8 @@
 
 A browser word game. The board starts with one seed word; you drag words from the
 bank onto the grid so each new word **crosses an existing word** (crossword style),
-sharing matching letters at every overlap. Play is endless — every word you place is
-replaced by a new one, and your score grows.
+sharing matching letters at every overlap. Each game offers up to **50 words**, and
+the board is **seeded by the date** — everyone gets the same daily puzzle.
 
 Placement uses **strict crossword rules**: every run of two or more letters formed on
 the board (the word you place *and* any incidental cross/parallel words) must be a
@@ -45,8 +45,8 @@ npm run words   # writes public/data/dictionary.txt and public/data/bank.txt
 - The drop preview is **green** when the placement is legal, **red** when it is not.
 - A legal word must overlap at least one existing letter and may not create any
   non-word runs. Drop it to place it; press **Esc** to cancel a drag.
-- **Move a placed word** by dragging it; for a crossing cell, the drag direction
-  picks which word (horizontal or vertical). An invalid drop pops it back.
+- _(Moving a placed word by dragging it is currently disabled — toggle
+  `ENABLE_WORD_MOVE` in `main.js`.)_
 - **Double-click a blank cell** to block it (turns black; no letter may be placed
   there). Double-click it again to clear the block.
 - The board is **infinite** in every direction — **drag empty space** to pan

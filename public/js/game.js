@@ -1,14 +1,36 @@
-// Game state: the board, the bank, the score, and the endless placement loop.
+// Game state: the board, the bank, the score, and the placement loop.
 
 const BANK_SIZE = 11;
+const MAX_WORDS = 50; // a game offers at most this many words (a daily puzzle)
+
+// Deterministic PRNG (fnv-1a hash → mulberry32) seeded from a string, so a given
+// seed always produces the same board.
+function makeRng(seedStr) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    h ^= seedStr.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  let a = h >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 class Game {
-  constructor() {
+  // `seed` defaults to today's date, so each day plays the same board.
+  constructor(seed = Game.todaySeed()) {
+    this.rng = makeRng(seed);
     this.grid = new Grid();
     this.bank = []; // array of { id, word }
     this.score = 0;
     this.wordsPlaced = 0;
     this.nextId = 1;
+    this.drawn = 0; // total bank words ever dealt; capped at MAX_WORDS
+    this.maxWords = MAX_WORDS;
 
     // Bucket the bank pool by word length so we can guarantee variety.
     this.buckets = {};
@@ -20,10 +42,16 @@ class Game {
     this.seed();
   }
 
+  // Date string "YYYY-M-D" used as the default daily seed.
+  static todaySeed() {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  }
+
   // Random word of a given length (or any length when omitted).
   drawWord(length) {
     const pool = length ? this.buckets[length] : window.BANK_POOL;
-    return pool[Math.floor(Math.random() * pool.length)];
+    return pool[Math.floor(this.rng() * pool.length)];
   }
 
   // How many bank words currently exist of each available length.
@@ -56,7 +84,7 @@ class Game {
         best.push(len);
       }
     }
-    return best[Math.floor(Math.random() * best.length)];
+    return best[Math.floor(this.rng() * best.length)];
   }
 
   // Place a starting seed word (a mid-length word) horizontally around the
@@ -72,8 +100,12 @@ class Game {
     this.score = this.computeScore();
   }
 
+  // Deal one more bank word, unless the game's word budget is exhausted (then
+  // the bank simply shrinks as words are placed and the game winds down).
   addBankWord() {
+    if (this.drawn >= MAX_WORDS) return;
     this.bank.push({ id: this.nextId++, word: this.drawWord(this.varietyLength()) });
+    this.drawn += 1;
   }
 
   bankItem(id) {
@@ -193,3 +225,4 @@ class Game {
 
 window.Game = Game;
 window.BANK_SIZE = BANK_SIZE;
+window.MAX_WORDS = MAX_WORDS;

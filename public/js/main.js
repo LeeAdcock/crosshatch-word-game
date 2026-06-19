@@ -22,6 +22,7 @@ let lastOrientation = 'h';
 const PITCH = window.CELL + 1; // cell size + 1px grid gap
 const VIEW_BUFFER = 12;        // extra cells rendered beyond the viewport per side
 const RECENTER_AT = 6;         // re-render when fewer than this many buffer cells remain
+const ENABLE_WORD_MOVE = false; // temporarily disabled: dragging a placed word to move it
 
 // cellEls maps "row,col" (absolute, may be negative) → the cell <div>.
 let cellEls = new Map();
@@ -220,7 +221,7 @@ function renderBank() {
 
 function updateStats() {
   scoreEl.textContent = Math.round(game.score);
-  wordsEl.textContent = game.wordsPlaced;
+  wordsEl.textContent = `${game.wordsPlaced} / ${game.maxWords}`;
 }
 
 function setMessage(text, kind) {
@@ -343,7 +344,7 @@ const hooks = {
       renderBank();
       updateStats();
       celebratePlacement(result.cells, result.gained);
-      setMessage('');
+      setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${Math.round(game.score)}.` : '');
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }
@@ -411,7 +412,7 @@ function initBoardPointer(wrap) {
   wrap.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     const cellEl = e.target.closest('.cell');
-    if (cellEl && cellEl.classList.contains('filled')) {
+    if (ENABLE_WORD_MOVE && cellEl && cellEl.classList.contains('filled')) {
       // Wait for a small drag, then lift the word along the dominant axis. A
       // plain click (no drag) leaves the word untouched.
       const sx = e.clientX, sy = e.clientY;
@@ -475,7 +476,7 @@ async function boot() {
   game = new Game();
   renderBank();
   updateStats();
-  setMessage('Drag a bank word onto the board, or drag a word already placed to move it. Drag empty space to pan.');
+  setMessage('Drag a bank word onto the board. Drag the board to pan; double-click a blank cell to block it.');
 
   const wrap = document.querySelector('.board-wrap');
   initBoardPointer(wrap);
