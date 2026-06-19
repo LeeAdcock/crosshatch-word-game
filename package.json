@@ -1,0 +1,26 @@
+{
+  "name": "crosshatch",
+  "version": "1.0.0",
+  "description": "Crosshatch — a browser crossword-style word game served by a minimal Node static server.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "words": "node scripts/build-words.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeeAdcock/reverse-scrabble.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/LeeAdcock/reverse-scrabble/issues"
+  },
+  "homepage": "https://github.com/LeeAdcock/reverse-scrabble#readme",
+  "devDependencies": {
+    "word-list": "^4.1.0",
+    "wordlist-english": "^1.2.1"
+  }
+}

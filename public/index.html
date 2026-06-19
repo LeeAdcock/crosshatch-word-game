@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crosshatch</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1><img class="brand-mark" src="./images/crosshatch-mark-inverted.svg" alt="" />Crosshatch</h1>
+      <p class="tagline">The daily uncrossword game</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="stat-label">Score</span><span id="score" class="stat-value">0</span></div>
+      <div class="stat"><span class="stat-label">Words</span><span id="words" class="stat-value">0</span></div>
+    </div>
+  </header>
+
+  <p id="message" class="message">Drag a bank word onto the board. Drag the board to pan; double-click a blank cell to block it.</p>
+
+  <main class="layout">
+    <section class="board-frame">
+      <div class="board-wrap">
+        <div id="board" class="board"></div>
+      </div>
+    </section>
+
+    <aside class="bank-wrap">
+      <h2>Word Bank</h2>
+      <div id="bank" class="bank"></div>
+    </aside>
+  </main>
+
+  <!-- Vanilla, no build: load in dependency order. -->
+  <script src="js/words.js"></script>
+  <script src="js/dictionary.js"></script>
+  <script src="js/grid.js"></script>
+  <script src="js/placement.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/drag.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
