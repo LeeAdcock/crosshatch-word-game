@@ -98,6 +98,8 @@ kbd {
   box-shadow: 0 0 16px 4px rgba(30, 111, 255, 0.45);
   pointer-events: none;
   z-index: 5;
+  /* Ease the box to its new size/position when the crossword grows or shrinks. */
+  transition: left 0.5s ease, top 0.5s ease, width 0.5s ease, height 0.5s ease;
 }
 
 .cell {
