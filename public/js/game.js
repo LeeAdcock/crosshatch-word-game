@@ -31,6 +31,7 @@ class Game {
     this.nextId = 1;
     this.bonus = 0; // accumulated combo bonus, added on top of the density score
     this.drawn = 0; // total bank words ever dealt; capped at MAX_WORDS
+    this.used = new Set(); // every word dealt this game, so none repeats
     this.maxWords = MAX_WORDS;
 
     // Bucket the bank pool by word length so we can guarantee variety.
@@ -49,10 +50,16 @@ class Game {
     return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
   }
 
-  // Random word of a given length (or any length when omitted).
+  // Random word of a given length (or any length when omitted), never repeating
+  // a word already dealt this game. Falls back to the full pool only if every
+  // word of that length has been used (won't happen within the 50-word cap).
   drawWord(length) {
     const pool = length ? this.buckets[length] : window.BANK_POOL;
-    return pool[Math.floor(this.rng() * pool.length)];
+    let candidates = pool.filter((w) => !this.used.has(w));
+    if (candidates.length === 0) candidates = pool;
+    const word = candidates[Math.floor(this.rng() * candidates.length)];
+    this.used.add(word);
+    return word;
   }
 
   // How many bank words currently exist of each available length.
