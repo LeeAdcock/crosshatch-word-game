@@ -6,6 +6,7 @@ const bankEl = document.getElementById('bank');
 const scoreEl = document.getElementById('score');
 const wordsEl = document.getElementById('words');
 const messageEl = document.getElementById('message');
+const brandMarkEl = document.querySelector('.brand-mark');
 
 // Assigned once the vetted word lists have loaded (see bootstrap at the bottom).
 let game;
@@ -35,6 +36,13 @@ let viewCols = 0;
 let previewed = [];
 // Blue overlay marking the bounding box of all filled cells.
 let bboxEl = null;
+// Currently-displayed crossword number tags, keyed "row,col" → the <span>. Kept so
+// numbers can fade in/out across renders instead of blinking on/off.
+let numEls = new Map();
+// True while the post-placement bbox-resize + 90° spin sequence runs; blocks input.
+let isRotating = false;
+// Cumulative logo rotation, bumped 90° per placement so it keeps spinning.
+let logoAngle = 0;
 
 const cellElAt = (r, c) => cellEls.get(`${r},${c}`);
 
@@ -57,35 +65,65 @@ function computeNumbers() {
   return numbers;
 }
 
-// Set a single cell's letter, fill/seed classes, and crossword number.
-function paintCell(cell, r, c, numbers, seedKeys) {
+// Set a single cell's letter and fill/seed classes. The crossword number tag is
+// managed separately by syncNumbers (so it can fade), so we only touch the letter
+// glyph here and leave any existing .num child in place. `b` is the filled-cell
+// bounds (the blue box); empty cells inside it get a slightly darker gray.
+function paintCell(cell, r, c, seedKeys, b) {
   const letter = game.grid.get(r, c);
-  cell.classList.remove('filled', 'seed', 'blocked', 'flash', 'preview-good', 'preview-bad');
-  cell.textContent = letter || ''; // also clears any previous number node
+  cell.classList.remove('filled', 'seed', 'inbox', 'flash', 'preview-good', 'preview-bad');
+  const oldGlyph = cell.querySelector('.glyph');
+  if (oldGlyph) oldGlyph.remove();
   if (letter) {
+    const glyph = document.createElement('span');
+    glyph.className = 'glyph'; // its own element so it can be counter-rotated upright
+    glyph.textContent = letter;
+    cell.appendChild(glyph);
     cell.classList.add('filled');
     if (seedKeys.has(`${r},${c}`)) cell.classList.add('seed');
-  } else if (game.grid.isBlocked(r, c)) {
-    cell.classList.add('blocked');
+  } else if (b && r >= b.minR && r <= b.maxR && c >= b.minC && c <= b.maxC) {
+    cell.classList.add('inbox'); // open cell within the blue box
   }
-  const num = numbers[`${r},${c}`];
-  if (num) {
+}
+
+// Reconcile the on-screen number tags with the freshly computed numbering: fade in
+// newly-numbered cells, fade out ones that lost their number (or whose number
+// changed), and leave unchanged ones untouched. Numbers shift around constantly as
+// the board rotates and renumbers, so this keeps them from blinking.
+function syncNumbers(numbers) {
+  for (const [key, el] of numEls) {
+    if (String(numbers[key]) !== el.dataset.n) {
+      el.classList.remove('num-in');
+      el.classList.add('num-out');
+      const remove = () => el.remove();
+      el.addEventListener('animationend', remove, { once: true });
+      setTimeout(remove, 400);
+      numEls.delete(key);
+    }
+  }
+  for (const key in numbers) {
+    if (numEls.has(key)) continue;
+    const cell = cellEls.get(key);
+    if (!cell) continue;
     const tag = document.createElement('span');
-    tag.className = 'num';
-    tag.textContent = num;
+    tag.className = 'num num-in';
+    tag.dataset.n = numbers[key];
+    tag.textContent = numbers[key];
     cell.appendChild(tag);
+    numEls.set(key, tag);
   }
 }
 
 function paintAllCells() {
   const seedKeys = new Set(game.seedCells.map((c) => `${c.row},${c.col}`));
-  const numbers = computeNumbers();
+  const b = game.grid.bounds();
   for (const [key, el] of cellEls) {
     const comma = key.indexOf(',');
     const r = Number(key.slice(0, comma));
     const c = Number(key.slice(comma + 1));
-    paintCell(el, r, c, numbers, seedKeys);
+    paintCell(el, r, c, seedKeys, b);
   }
+  syncNumbers(computeNumbers());
   updateBoundingBox();
 }
 
@@ -119,6 +157,7 @@ function renderWindow(r0, c0, rows, cols) {
   boardEl.style.setProperty('--rows', rows);
   boardEl.innerHTML = '';
   cellEls = new Map();
+  numEls = new Map(); // their spans were just destroyed; syncNumbers re-adds (fading in)
 
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
@@ -177,6 +216,31 @@ function renderCenteredOn(worldRow, worldCol) {
   scrollWorldToCenter(worldRow, worldCol);
 }
 
+// Render a `rows`×`cols` window centered on (centerRow, centerCol) but scrolled so
+// that world point lands at the given viewport pixel — used by the rotation so a
+// chosen pivot stays pinned to one spot on screen across re-renders.
+function renderWindowAround(centerRow, centerCol, rows, cols, screenX, screenY) {
+  const c0 = Math.round(centerCol) - Math.floor(cols / 2);
+  const r0 = Math.round(centerRow) - Math.floor(rows / 2);
+  renderWindow(r0, c0, rows, cols);
+  const wrap = document.querySelector('.board-wrap');
+  wrap.scrollLeft = (centerCol - viewC0) * PITCH + window.CELL / 2 - screenX;
+  wrap.scrollTop = (centerRow - viewR0) * PITCH + window.CELL / 2 - screenY;
+}
+
+// A square window big enough that rotating about a pivot at viewport pixel
+// (screenX, screenY) never swings the board's edge into view. Half-side covers the
+// farthest viewport corner from the pivot (plus the usual buffer).
+function spinWindowSide(screenX, screenY) {
+  const wrap = document.querySelector('.board-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  let maxDist = 0;
+  for (const [x, y] of [[0, 0], [w, 0], [0, h], [w, h]]) {
+    maxDist = Math.max(maxDist, Math.hypot(x - screenX, y - screenY));
+  }
+  return 2 * (Math.ceil(maxDist / PITCH) + VIEW_BUFFER) + 1;
+}
+
 // If the visible area has panned within RECENTER_AT cells of the rendered
 // window's edge, re-render centered on the current view so more grid appears.
 function ensureCoverage() {
@@ -199,6 +263,137 @@ function ensureCoverage() {
 function refreshBoard() {
   paintAllCells();
   ensureCoverage();
+}
+
+// A placement triggers a two-step animation: first the blue box eases to its new
+// size (kicked off by refreshBoard's updateBoundingBox), then — once that settles —
+// the whole board spins a quarter turn. Input is blocked for the whole sequence.
+function rotateBoard() {
+  const b = game.grid.bounds();
+  if (!b) return; // empty board — nothing to rotate
+  isRotating = true;
+
+  const cr = (b.minR + b.maxR) / 2;
+  const cc = (b.minC + b.maxC) / 2;
+
+  // Wait for the bbox resize transition to finish, then spin. If the box didn't
+  // actually change size, no transitionend fires, so a timer falls through.
+  let started = false;
+  const begin = () => {
+    if (started) return;
+    started = true;
+    clearTimeout(wait);
+    if (bboxEl) bboxEl.removeEventListener('transitionend', begin);
+    spinBoard(cr, cc);
+  };
+  if (bboxEl) bboxEl.addEventListener('transitionend', begin);
+  const wait = setTimeout(begin, 600); // bbox transition is 0.5s; small margin
+}
+
+// Spin the whole board a quarter turn about the bounding-box center, animated over
+// 1s with the letters kept upright, then commit the rotation to the grid data.
+// This is a gameplay mechanic: because runs are read left→right / top→bottom, the
+// rotated coordinates genuinely change which placements are valid (and a word on
+// the reversed axis will read backwards afterward — intended).
+function spinBoard(cr, cc) {
+  // Spin about the bbox center exactly where it sits now — no recentering — so the
+  // box appears to pivot in place. First note where the center is on screen.
+  const wrap = document.querySelector('.board-wrap');
+  const screenX = (cc - viewC0) * PITCH + window.CELL / 2 - wrap.scrollLeft;
+  const screenY = (cr - viewR0) * PITCH + window.CELL / 2 - wrap.scrollTop;
+
+  // Re-render a square window large enough that rotating about this pivot never
+  // exposes the board's edge, keeping the pivot pinned to its current screen spot
+  // (so this re-render is invisible — nothing moves, there are just more cells).
+  const side = spinWindowSide(screenX, screenY);
+  renderWindowAround(cr, cc, side, side, screenX, screenY);
+
+  // transform-origin is board-local; recompute against the new window.
+  const originX = (cc - viewC0) * PITCH + window.CELL / 2;
+  const originY = (cr - viewR0) * PITCH + window.CELL / 2;
+  boardEl.style.transformOrigin = `${originX}px ${originY}px`;
+
+  logoAngle += 90;
+  brandMarkEl.style.transform = `rotate(${logoAngle}deg)`;
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    boardEl.removeEventListener('transitionend', onEnd);
+    try {
+      commitRotation(cr, cc, screenX, screenY);
+    } finally {
+      isRotating = false; // never leave input permanently blocked
+    }
+  };
+  const onEnd = (e) => {
+    // Only the board's own transform transition commits — ignore the glyph/num ones.
+    if (e.target === boardEl && e.propertyName === 'transform') finish();
+  };
+  boardEl.addEventListener('transitionend', onEnd);
+  // Fallback in case transitionend never fires (e.g. a backgrounded tab).
+  const timer = setTimeout(finish, 1100);
+
+  // Next frame so transform-origin is applied before the transition starts.
+  requestAnimationFrame(() => boardEl.classList.add('rotating'));
+}
+
+// Rewrite the grid data so coordinates rotate 90° clockwise about (cr, cc), then
+// clear the visual transforms and re-render the (now axis-aligned) board where the
+// animation ended.
+function commitRotation(cr, cc, screenX, screenY) {
+  // Work in a doubled-integer space and snap the pivot to equal parity so the
+  // integer lattice maps to itself (no fractional "row,col" keys).
+  const PR = Math.round(2 * cr);
+  let PC = Math.round(2 * cc);
+  if (((PR + PC) & 1) === 1) PC -= 1;
+  const map = (r, c) => ({
+    row: (PR + (2 * c - PC)) / 2,
+    col: (PC - (2 * r - PR)) / 2,
+  });
+
+  const newCells = new Map();
+  for (const [r, c, letter] of game.grid.entries()) {
+    const p = map(r, c);
+    newCells.set(`${p.row},${p.col}`, letter);
+  }
+  game.grid.cells = newCells;
+
+  const newBlocked = new Set();
+  for (const key of game.grid.blocked) {
+    const comma = key.indexOf(',');
+    const p = map(Number(key.slice(0, comma)), Number(key.slice(comma + 1)));
+    newBlocked.add(`${p.row},${p.col}`);
+  }
+  game.grid.blocked = newBlocked;
+
+  game.seedCells = game.seedCells.map(({ row, col, letter }) => ({ ...map(row, col), letter }));
+
+  const nb = game.grid.bounds();
+  const ncr = (nb.minR + nb.maxR) / 2;
+  const ncc = (nb.minC + nb.maxC) / 2;
+
+  // Drop the transforms before re-rendering so the new DOM isn't rotated. Clear the
+  // inline transform to '' (not 'none') — an inline value would override the
+  // `.board.rotating { transform: rotate(90deg) }` rule and stop the NEXT spin from
+  // animating.
+  boardEl.classList.remove('rotating');
+  boardEl.style.transform = '';
+  boardEl.style.transformOrigin = '';
+
+  // Re-render so the new bbox center lands at exactly the same screen spot the old
+  // center occupied during the spin — the board pivots around a fixed point with no
+  // post-rotation shift. Center the window on the world point that sits at the
+  // viewport center (so the render buffer stays symmetric around the visible area),
+  // then pin the scroll so the new center falls precisely on (screenX, screenY).
+  const wrap = document.querySelector('.board-wrap');
+  const vcol = ncc + (wrap.clientWidth / 2 - screenX) / PITCH;
+  const vrow = ncr + (wrap.clientHeight / 2 - screenY) / PITCH;
+  renderCenteredOn(vrow, vcol);
+  wrap.scrollLeft = (ncc - viewC0) * PITCH + window.CELL / 2 - screenX;
+  wrap.scrollTop = (ncr - viewR0) * PITCH + window.CELL / 2 - screenY;
 }
 
 function renderBank() {
@@ -362,6 +557,7 @@ const hooks = {
   cellTopLeft,
   preview,
   clearPreview,
+  canInteract: () => !isRotating,
   commit: (id, row, col, orientation) => {
     const result = game.place(id, row, col, orientation);
     if (result.ok) {
@@ -370,6 +566,7 @@ const hooks = {
       updateStats();
       celebratePlacement(result.cells, result.gained, result.combo);
       setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${commafy(game.score)}.` : '');
+      rotateBoard();
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }
@@ -420,8 +617,7 @@ function startWordMove(downEvt, cellEl, axis) {
 function initBoardPointer(wrap) {
   let lastX = 0, lastY = 0;
 
-  // Pan via window listeners (no pointer capture, which would suppress the
-  // click/dblclick events the block toggle relies on).
+  // Pan via window listeners (no pointer capture, so click events still fire).
   const panMove = (e) => {
     wrap.scrollLeft -= e.clientX - lastX;
     wrap.scrollTop -= e.clientY - lastY;
@@ -436,6 +632,7 @@ function initBoardPointer(wrap) {
 
   wrap.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    if (isRotating) return; // ignore pan/word-move while the board is spinning
     const cellEl = e.target.closest('.cell');
     if (ENABLE_WORD_MOVE && cellEl && cellEl.classList.contains('filled')) {
       // Wait for a small drag, then lift the word along the dominant axis. A
@@ -464,21 +661,10 @@ function initBoardPointer(wrap) {
     window.addEventListener('pointercancel', panEnd);
   });
 
-  // Double-click a blank cell to block it (turns black, can't hold a letter);
-  // double-click a blocked cell to clear it. Cells with a letter are ignored.
-  wrap.addEventListener('dblclick', (e) => {
-    const cellEl = e.target.closest('.cell');
-    if (!cellEl) return;
-    const r = +cellEl.dataset.row;
-    const c = +cellEl.dataset.col;
-    if (game.grid.get(r, c)) return; // occupied by a letter
-    game.grid.toggleBlocked(r, c);
-    paintAllCells();
-  });
-
   // Top up coverage as the view scrolls/pans (throttled to one check per frame).
   let pending = false;
   wrap.addEventListener('scroll', () => {
+    if (isRotating) return; // our own recenter scroll must not re-render mid-spin
     if (pending) return;
     pending = true;
     requestAnimationFrame(() => {

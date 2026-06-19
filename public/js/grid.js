@@ -16,17 +16,6 @@ class Grid {
     return this.blocked.has(`${row},${col}`);
   }
 
-  // Toggle a cell's blocked state; returns the new state.
-  toggleBlocked(row, col) {
-    const key = `${row},${col}`;
-    if (this.blocked.has(key)) {
-      this.blocked.delete(key);
-      return false;
-    }
-    this.blocked.add(key);
-    return true;
-  }
-
   // The grid is infinite, so every coordinate is in bounds.
   inBounds() {
     return true;

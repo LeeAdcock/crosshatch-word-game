@@ -14,11 +14,10 @@
     </div>
     <div class="stats">
       <div class="stat"><span class="stat-label">Score</span><span id="score" class="stat-value">0</span></div>
-      <div class="stat"><span class="stat-label">Words</span><span id="words" class="stat-value">0</span></div>
     </div>
   </header>
 
-  <p id="message" class="message">Drag a bank word onto the board. Drag the board to pan; double-click a blank cell to block it.</p>
+  <p id="message" class="message">Drag a bank word onto the board. Drag the board to pan.</p>
 
   <main class="layout">
     <section class="board-frame">
@@ -28,7 +27,7 @@
     </section>
 
     <aside class="bank-wrap">
-      <h2>Word Bank</h2>
+      <h2>Word Bank<span id="words" class="bank-count">0</span></h2>
       <div id="bank" class="bank"></div>
     </aside>
   </main>
