@@ -356,23 +356,21 @@ function startWordMove(downEvt, cellEl, axis) {
 // One pointer handler for the board: drag a filled cell to move that word, drag
 // empty space to pan. Panning is incremental so a mid-pan re-render never jumps.
 function initBoardPointer(wrap) {
-  let panning = false;
   let lastX = 0, lastY = 0;
 
-  wrap.addEventListener('pointermove', (e) => {
-    if (!panning) return;
+  // Pan via window listeners (no pointer capture, which would suppress the
+  // click/dblclick events the block toggle relies on).
+  const panMove = (e) => {
     wrap.scrollLeft -= e.clientX - lastX;
     wrap.scrollTop -= e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
-  });
-  const endPan = (e) => {
-    if (!panning) return;
-    panning = false;
-    wrap.classList.remove('panning');
-    try { wrap.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
   };
-  wrap.addEventListener('pointerup', endPan);
-  wrap.addEventListener('pointercancel', endPan);
+  const panEnd = () => {
+    wrap.classList.remove('panning');
+    window.removeEventListener('pointermove', panMove);
+    window.removeEventListener('pointerup', panEnd);
+    window.removeEventListener('pointercancel', panEnd);
+  };
 
   wrap.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
@@ -397,10 +395,11 @@ function initBoardPointer(wrap) {
       return;
     }
     // Empty space → pan.
-    panning = true;
     lastX = e.clientX; lastY = e.clientY;
     wrap.classList.add('panning');
-    wrap.setPointerCapture(e.pointerId);
+    window.addEventListener('pointermove', panMove);
+    window.addEventListener('pointerup', panEnd);
+    window.addEventListener('pointercancel', panEnd);
   });
 
   // Double-click a blank cell to block it (turns black, can't hold a letter);
