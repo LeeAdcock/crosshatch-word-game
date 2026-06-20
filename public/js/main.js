@@ -270,16 +270,10 @@ function renderChip(item) {
 
 function renderBank() {
   bankEl.innerHTML = '';
-  // Normal words stack from the top; the bonus word is pinned to the bottom of the
-  // bank (a flex spacer pushes it down), set apart as the special reward tile.
+  // The bonus word is pinned to the top of the bank, set apart as the special
+  // reward tile; normal words stack below it.
+  for (const item of game.bank) if (item.bonus) renderChip(item);
   for (const item of game.bank) if (!item.bonus) renderChip(item);
-  const bonuses = game.bank.filter((b) => b.bonus);
-  if (bonuses.length) {
-    const spacer = document.createElement('div');
-    spacer.className = 'bank-spacer';
-    bankEl.appendChild(spacer);
-    for (const item of bonuses) renderChip(item);
-  }
 }
 
 // Whole number with comma thousands separators, e.g. 1234 -> "1,234".

@@ -350,9 +350,8 @@ kbd {
   from { height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; opacity: 0; }
   to { height: var(--chip-h); opacity: 1; }
 }
-/* The board-derived bonus word reads as a special amber tile, pinned to the bottom
-   of the bank by .bank-spacer (which fills the gap above it). */
-.bank-spacer { flex: 1 1 auto; min-height: 10px; }
+/* The board-derived bonus word reads as a special amber tile, pinned to the top
+   of the bank. */
 .chip.bonus-chip { background: #f4c20d; border-color: #111; }
 /* A gift marker while the bonus word waits in the bank. Lives in ::before so it
    never affects the drag ghost or grab-letter math (both read the .word span). */

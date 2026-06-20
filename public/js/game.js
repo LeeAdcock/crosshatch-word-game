@@ -147,10 +147,12 @@ class Game {
     this.drawn += 1;
   }
 
-  // Add a board-derived bonus word as an extra chip. Unlike addBankWord it does
-  // not touch the MAX_WORDS budget (the bonus is a reward on top of normal play)
-  // and is flagged so the UI renders it yellow. Returns whether one was added.
+  // Add a board-derived bonus word as an extra chip, flagged so the UI renders
+  // it yellow. A bonus only counts against MAX_WORDS when it's actually placed
+  // (see place()), so none is offered once the word budget is fully dealt.
+  // Returns whether one was added.
   addBonusWord() {
+    if (this.drawn >= MAX_WORDS) return false;
     const found = window.deriveBonusWord(this.grid, this.used);
     if (!found) return false;
     this.used.add(found.word);
@@ -283,8 +285,9 @@ class Game {
 
     // Placing any NON-bonus word forfeits an outstanding bonus (it only lingers for
     // the immediate next move) and draws a normal replacement. A placed bonus is
-    // not replaced (it was an extra chip). Then every BONUS_EVERY placements earn a
-    // fresh board-derived bonus word.
+    // not replaced, but it DOES consume one slot of the MAX_WORDS budget (drawn++),
+    // so every bonus used means one fewer normal word dealt — the game still totals
+    // MAX_WORDS placements. Then every BONUS_EVERY placements earn a fresh bonus.
     let bonusForfeited = false;
     if (!wasBonus) {
       if (this.bank.some((b) => b.bonus)) {
@@ -292,6 +295,8 @@ class Game {
         bonusForfeited = true;
       }
       this.addBankWord();
+    } else {
+      this.drawn += 1;
     }
     const bonusAdded = this.wordsPlaced % BONUS_EVERY === 0 ? this.addBonusWord() : false;
 
