@@ -93,6 +93,7 @@ body {
   opacity: 0.85;
 }
 .message.error { color: #c0392b; font-weight: 700; opacity: 1; }
+.message.bonus { color: #b8860b; font-weight: 700; opacity: 1; }
 
 kbd {
   background: #f0f0f0;
@@ -185,6 +186,7 @@ kbd {
 
 .cell.filled { background: var(--paper); color: var(--ink); }
 .cell.seed { background: #1e6fff; color: #fff; } /* first-placed word, matching the box */
+.cell.bonus { background: #f4c20d; color: var(--ink); } /* placed bonus word — amber, contrasts the blue */
 /* Open cells inside the blue box read a touch darker. A fading dark overlay does it
    (rather than a background swap) so the tint eases in/out as the box grows or
    rotates, without affecting the instant preview/letter colors underneath. */
@@ -235,6 +237,26 @@ kbd {
   0% { background: #8ab4ff; }
   100% { background: #1e6fff; }
 }
+/* Bonus tiles are amber; pulse amber→amber so the letters stay readable. */
+.cell.bonus.flash { animation: bonusFlash 0.7s ease-out; }
+@keyframes bonusFlash {
+  0% { background: #ffe07a; }
+  100% { background: #f4c20d; }
+}
+
+/* When a bonus word is placed, the words it connects pulse yellow (not the
+   default blue). Each base tile type ends the pulse at its own resting color. */
+.cell.flash-bonus { animation: connectFlash 0.7s ease-out; }
+@keyframes connectFlash {
+  0% { background: #ffd21e; }
+  100% { background: var(--paper); }
+}
+.cell.seed.flash-bonus { animation: connectFlashSeed 0.7s ease-out; }
+@keyframes connectFlashSeed {
+  0% { background: #ffd21e; }
+  100% { background: #1e6fff; }
+}
+.cell.bonus.flash-bonus { animation: bonusFlash 0.7s ease-out; }
 
 /* Floating "+N" score popup that rises and fades above a placement. */
 .score-pop {
@@ -280,6 +302,11 @@ kbd {
 
 .bank-wrap {
   flex: 0 0 220px;
+  /* Stretch to the row height (the board's height) so the box stays a fixed size
+     and doesn't resize as words appear and animate inside it. */
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
   background: var(--paper);
   border: 2px solid var(--ink);
   padding: 14px 16px 18px;
@@ -297,7 +324,9 @@ kbd {
 }
 .bank-count { font-weight: 700; letter-spacing: 0; color: #1e6fff; }
 
-.bank { display: flex; flex-direction: column; gap: 10px; }
+/* Chips stack from the top; the list takes the remaining height of the fixed-size
+   bank box and scrolls only if the words ever overflow it. */
+.bank { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; overflow-y: auto; }
 
 /* Bank words look like crossword tiles: white with a black border. */
 .chip {
@@ -312,6 +341,22 @@ kbd {
 }
 .chip:active { cursor: grabbing; }
 .chip.dragging { opacity: 0.3; }
+/* A freshly-dealt bank word grows in from zero height over half a second. --chip-h
+   is the chip's measured natural height, set in JS just before the class is added.
+   Padding/margin/opacity collapse to 0 at the start and revert to their base
+   values by the end (keyframe omits them in `to`). */
+.chip.chip-enter { overflow: hidden; animation: chipEnter 0.5s ease both; }
+@keyframes chipEnter {
+  from { height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; opacity: 0; }
+  to { height: var(--chip-h); opacity: 1; }
+}
+/* The board-derived bonus word reads as a special amber tile, pinned to the bottom
+   of the bank by .bank-spacer (which fills the gap above it). */
+.bank-spacer { flex: 1 1 auto; min-height: 10px; }
+.chip.bonus-chip { background: #f4c20d; border-color: #111; }
+/* A gift marker while the bonus word waits in the bank. Lives in ::before so it
+   never affects the drag ghost or grab-letter math (both read the .word span). */
+.chip.bonus-chip::before { content: '🎁'; margin-right: 8px; font-size: 18px; line-height: 1; }
 .chip .word {
   font-weight: 700;
   letter-spacing: 3px;

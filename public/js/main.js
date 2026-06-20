@@ -38,6 +38,9 @@ let bboxEl = null;
 // Currently-displayed crossword number tags, keyed "row,col" → the <span>. Kept so
 // numbers can fade in/out across renders instead of blinking on/off.
 let numEls = new Map();
+// Bank-word ids already shown, so only freshly-dealt words animate in (renderBank
+// rebuilds every chip each call, but carried-over words should not re-animate).
+const seenBankIds = new Set();
 
 const cellElAt = (r, c) => cellEls.get(`${r},${c}`);
 
@@ -64,9 +67,9 @@ function computeNumbers() {
 // managed separately by syncNumbers (so it can fade), so we only touch the letter
 // glyph here and leave any existing .num child in place. `b` is the filled-cell
 // bounds (the blue box); empty cells inside it get a slightly darker gray.
-function paintCell(cell, r, c, seedKeys, b) {
+function paintCell(cell, r, c, seedKeys, bonusKeys, b) {
   const letter = game.grid.get(r, c);
-  cell.classList.remove('filled', 'seed', 'inbox', 'flash', 'preview-good', 'preview-bad');
+  cell.classList.remove('filled', 'seed', 'bonus', 'inbox', 'flash', 'preview-good', 'preview-bad');
   const oldGlyph = cell.querySelector('.glyph');
   if (oldGlyph) oldGlyph.remove();
   if (letter) {
@@ -76,6 +79,7 @@ function paintCell(cell, r, c, seedKeys, b) {
     cell.appendChild(glyph);
     cell.classList.add('filled');
     if (seedKeys.has(`${r},${c}`)) cell.classList.add('seed');
+    else if (bonusKeys.has(`${r},${c}`)) cell.classList.add('bonus');
   } else if (b && r >= b.minR && r <= b.maxR && c >= b.minC && c <= b.maxC) {
     cell.classList.add('inbox'); // open cell within the blue box
   }
@@ -111,12 +115,13 @@ function syncNumbers(numbers) {
 
 function paintAllCells() {
   const seedKeys = new Set(game.seedCells.map((c) => `${c.row},${c.col}`));
+  const bonusKeys = game.bonusCells; // already a Set of "row,col" keys
   const b = game.grid.bounds();
   for (const [key, el] of cellEls) {
     const comma = key.indexOf(',');
     const r = Number(key.slice(0, comma));
     const c = Number(key.slice(comma + 1));
-    paintCell(el, r, c, seedKeys, b);
+    paintCell(el, r, c, seedKeys, bonusKeys, b);
   }
   syncNumbers(computeNumbers());
   updateBoundingBox();
@@ -235,21 +240,45 @@ function refreshBoard() {
   ensureCoverage();
 }
 
+function renderChip(item) {
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  if (item.bonus) chip.classList.add('bonus-chip');
+  chip.dataset.id = item.id;
+
+  const word = document.createElement('span');
+  word.className = 'word';
+  word.textContent = item.word;
+
+  chip.appendChild(word);
+  bankEl.appendChild(chip);
+
+  // Grow a freshly-dealt word in from zero height (its natural height is measured
+  // here, then a keyframe animates 0 → that height over half a second).
+  if (!seenBankIds.has(item.id)) {
+    seenBankIds.add(item.id);
+    chip.style.setProperty('--chip-h', `${chip.offsetHeight}px`);
+    chip.classList.add('chip-enter');
+    chip.addEventListener('animationend', () => {
+      chip.classList.remove('chip-enter');
+      chip.style.removeProperty('--chip-h');
+    }, { once: true });
+  }
+
+  drag.attach(chip, item.id, item.word);
+}
+
 function renderBank() {
   bankEl.innerHTML = '';
-  for (const item of game.bank) {
-    const chip = document.createElement('div');
-    chip.className = 'chip';
-    chip.dataset.id = item.id;
-
-    const word = document.createElement('span');
-    word.className = 'word';
-    word.textContent = item.word;
-
-    chip.appendChild(word);
-    bankEl.appendChild(chip);
-
-    drag.attach(chip, item.id, item.word);
+  // Normal words stack from the top; the bonus word is pinned to the bottom of the
+  // bank (a flex spacer pushes it down), set apart as the special reward tile.
+  for (const item of game.bank) if (!item.bonus) renderChip(item);
+  const bonuses = game.bank.filter((b) => b.bonus);
+  if (bonuses.length) {
+    const spacer = document.createElement('div');
+    spacer.className = 'bank-spacer';
+    bankEl.appendChild(spacer);
+    for (const item of bonuses) renderChip(item);
   }
 }
 
@@ -279,19 +308,21 @@ function comboLabel(count) {
 // Flash the words formed by a placement and float the points gained above it.
 // `cells` are the placed word's cells; `gained` is the score delta; `combo` is
 // { count, bonus } when the placement formed two or more words.
-function celebratePlacement(cells, gained, combo) {
+function celebratePlacement(cells, gained, combo, isBonus) {
   if (!cells || !cells.length) return;
 
-  // Flash every cell of the words this placement formed or extended.
+  // Flash every cell of the words this placement formed or extended. A bonus
+  // placement pulses its connected words yellow instead of the default blue.
+  const flashClass = isBonus ? 'flash-bonus' : 'flash';
   const runCells = game.grid.runCellsThrough(cells);
   const flashed = [];
   for (const { row, col } of runCells) {
     const el = cellElAt(row, col);
     if (!el) continue;
-    el.classList.add('flash');
+    el.classList.add(flashClass);
     flashed.push(el);
   }
-  setTimeout(() => flashed.forEach((el) => el.classList.remove('flash')), 700);
+  setTimeout(() => flashed.forEach((el) => el.classList.remove(flashClass)), 700);
 
   // Float a "+N" popup above the middle of the placed word.
   const mid = cells[Math.floor(cells.length / 2)];
@@ -402,8 +433,11 @@ const hooks = {
       refreshBoard();
       renderBank();
       updateStats();
-      celebratePlacement(result.cells, result.gained, result.combo);
-      setMessage(game.bank.length === 0 ? `Daily puzzle complete — final score ${commafy(game.score)}.` : '');
+      celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
+      if (game.bank.length === 0) setMessage(`Daily puzzle complete — final score ${commafy(game.score)}.`);
+      else if (result.bonusAdded) setMessage('★ Bonus word! Place the yellow tile for big points.', 'bonus');
+      else if (result.bonusForfeited) setMessage('Bonus word expired — you placed another word.');
+      else setMessage('');
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }

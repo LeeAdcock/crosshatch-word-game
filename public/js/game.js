@@ -2,6 +2,7 @@
 
 const BANK_SIZE = 10;
 const MAX_WORDS = 25; // a game offers at most this many words (a daily puzzle)
+const BONUS_EVERY = 5; // every Nth placement earns a board-derived bonus word
 const PLURAL_WEIGHT = 0.3; // plurals are drawn at ~30% their natural rate (reduced, not removed)
 
 // Heuristic: a word is "likely plural" if stripping its plural ending leaves a
@@ -47,6 +48,7 @@ class Game {
     this.drawn = 0; // total bank words ever dealt; capped at MAX_WORDS
     this.used = new Set(); // every word dealt this game, so none repeats
     this.maxWords = MAX_WORDS;
+    this.bonusCells = new Set(); // "row,col" keys of placed bonus-word letters (rendered yellow)
 
     // Bucket the bank pool by word length so we can guarantee variety.
     this.buckets = {};
@@ -143,6 +145,17 @@ class Game {
     if (this.drawn >= MAX_WORDS) return;
     this.bank.push({ id: this.nextId++, word: this.drawWord(this.varietyLength()) });
     this.drawn += 1;
+  }
+
+  // Add a board-derived bonus word as an extra chip. Unlike addBankWord it does
+  // not touch the MAX_WORDS budget (the bonus is a reward on top of normal play)
+  // and is flagged so the UI renders it yellow. Returns whether one was added.
+  addBonusWord() {
+    const found = window.deriveBonusWord(this.grid, this.used);
+    if (!found) return false;
+    this.used.add(found.word);
+    this.bank.push({ id: this.nextId++, word: found.word, bonus: true });
+    return true;
   }
 
   bankItem(id) {
@@ -248,10 +261,15 @@ class Game {
     const result = window.validatePlacement(this.grid, item.word, row, col, orientation);
     if (!result.valid) return { ok: false, reason: result.reason };
 
+    const wasBonus = !!item.bonus;
     const before = this.score;
     const placedCells = this.grid.cellsFor(item.word, row, col, orientation);
     const newlyFilled = placedCells.filter(({ row: r, col: c }) => this.grid.get(r, c) === null);
     this.grid.placeWord(item.word, row, col, orientation);
+
+    // Every cell of a bonus word reads yellow — including the letters it shares
+    // with words it crosses — so the whole bonus word is visibly highlighted.
+    if (wasBonus) for (const { row: r, col: c } of placedCells) this.bonusCells.add(`${r},${c}`);
 
     // Count the words this placement formed; reward forming several at once.
     const formed = this.grid.formedWords(placedCells, newlyFilled);
@@ -260,9 +278,22 @@ class Game {
     this.wordsPlaced++;
     this.score = this.computeScore();
 
-    // Remove from bank and draw a replacement (endless).
+    // Remove the placed word from the bank.
     this.bank = this.bank.filter((b) => b.id !== id);
-    this.addBankWord();
+
+    // Placing any NON-bonus word forfeits an outstanding bonus (it only lingers for
+    // the immediate next move) and draws a normal replacement. A placed bonus is
+    // not replaced (it was an extra chip). Then every BONUS_EVERY placements earn a
+    // fresh board-derived bonus word.
+    let bonusForfeited = false;
+    if (!wasBonus) {
+      if (this.bank.some((b) => b.bonus)) {
+        this.bank = this.bank.filter((b) => !b.bonus);
+        bonusForfeited = true;
+      }
+      this.addBankWord();
+    }
+    const bonusAdded = this.wordsPlaced % BONUS_EVERY === 0 ? this.addBonusWord() : false;
 
     return {
       ok: true,
@@ -270,6 +301,9 @@ class Game {
       score: this.score,
       cells: placedCells,
       combo: formed.length >= 2 ? { count: formed.length, bonus: comboBonus } : null,
+      placedBonus: wasBonus, // this placement was a bonus word (flash its connections yellow)
+      bonusAdded,            // this placement earned a NEW bonus word
+      bonusForfeited,        // this placement removed an unused bonus word
     };
   }
 }
