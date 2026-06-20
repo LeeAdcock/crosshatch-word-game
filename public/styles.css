@@ -50,7 +50,6 @@ body {
   width: auto;
   margin-right: 0.4em;
   vertical-align: -0.15em;
-  transition: transform 1s ease-in-out; /* spins in sync with each board rotation */
 }
 
 .tagline {
@@ -62,11 +61,30 @@ body {
   color: #1e6fff;
 }
 
-.stats { display: flex; gap: 48px; }
-.stat { display: flex; flex-direction: column; align-items: flex-end; }
-.stat-label { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; } /* 30% larger */
-.stat-value { font-size: 31px; font-weight: 700; } /* 30% larger */
-#score { color: #1e6fff; text-shadow: 0 0 14px rgba(30, 111, 255, 0.65); } /* blue glow */
+/* Score hovers in the top-right corner of the board, above the inset shadow, so it
+   reads as a live part of play. pointer-events:none keeps it from blocking panning. */
+.score-overlay {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 11; /* above .board-frame::after (z-index 10) */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.stat-label { font-size: 18px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.6; } /* +30% */
+/* White (board-colored) halo behind the "Score" label so it stays readable over
+   tiles and gridlines. It's invisible over the white board itself by design — it
+   only shows where the text overlaps darker cells. */
+.score-overlay .stat-label {
+  opacity: 0.85;
+  text-shadow:
+    0 0 3px var(--paper), 0 0 3px var(--paper),
+    0 0 7px var(--paper), 0 0 7px var(--paper);
+}
+.stat-value { font-size: 40px; font-weight: 700; line-height: 1.05; } /* +30% */
+#score { color: #1e6fff; text-shadow: 0 0 16px rgba(30, 111, 255, 0.7); } /* blue glow */
 
 .message {
   margin: 12px 22px 0;
@@ -133,16 +151,6 @@ kbd {
   width: max-content;
 }
 
-/* Post-placement quarter-turn. transform-origin (the bbox center) is set inline in
-   px from JS. The grid spins; the glyphs/numbers below counter-rotate to stay
-   upright over the same 1s. */
-.board.rotating { transition: transform 1s ease-in-out; transform: rotate(90deg); }
-.board.rotating .cell .glyph,
-.board.rotating .cell .num {
-  transition: transform 1s ease-in-out;
-  transform: rotate(-90deg);
-}
-
 /* Blue rectangle around the filled portion — the crossword's used area — with a
    soft transparent blue glow. */
 .bbox {
@@ -173,7 +181,7 @@ kbd {
 
 /* Letter glyph lives in its own element so it can be counter-rotated upright while
    the board spins. */
-.cell .glyph { display: inline-block; transform-origin: center center; }
+.cell .glyph { display: inline-block; }
 
 .cell.filled { background: var(--paper); color: var(--ink); }
 .cell.seed { background: #1e6fff; color: #fff; } /* first-placed word, matching the box */

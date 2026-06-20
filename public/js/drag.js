@@ -19,7 +19,6 @@ class DragController {
   attach(chipEl, id, word) {
     chipEl.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return; // left button only
-      if (this.hooks.canInteract && !this.hooks.canInteract()) return; // not mid-spin
       e.preventDefault();
       this.begin(e, chipEl, id, word);
     });

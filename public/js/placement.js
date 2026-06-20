@@ -63,15 +63,10 @@ function validatePlacement(grid, word, row, col, orientation, firstMove = false)
   const newlyFilled = cells.filter(({ row: r, col: c }) => grid.get(r, c) === null);
   grid.placeWord(word, row, col, orientation);
 
-  // A run counts as a word if it spells one in EITHER direction. The board rotates
-  // 90° after each placement, which flips one axis' reading order (a left→right word
-  // becomes right→left, top→bottom becomes bottom→top), so we accept both so the
-  // rotation never invalidates letters that were a legitimate word before it.
   let valid = true;
   let reason = '';
   for (const run of grid.runsThrough(cells)) {
-    const reversed = run.split('').reverse().join('');
-    if (!window.isWord(run) && !window.isWord(reversed)) {
+    if (!window.isWord(run)) {
       valid = false;
       reason = `"${run.toUpperCase()}" is not a word`;
       break;
