@@ -2,6 +2,20 @@
 
 const BANK_SIZE = 10;
 const MAX_WORDS = 25; // a game offers at most this many words (a daily puzzle)
+const PLURAL_WEIGHT = 0.3; // plurals are drawn at ~30% their natural rate (reduced, not removed)
+
+// Heuristic: a word is "likely plural" if stripping its plural ending leaves a
+// real word — cats→cat, boxes→box, berries→berry. Excludes -ss/-us/-is endings
+// (class, bus, axis) and very short words (gas, bus), which only look plural.
+// Also catches 3rd-person verbs (runs→run), which read as "already inflected"
+// the same way. Needs window.DICTIONARY, which is loaded before any Game exists.
+function isLikelyPlural(word) {
+  if (word.length < 4 || !word.endsWith('s')) return false;
+  if (/(ss|us|is)$/.test(word)) return false;
+  if (word.endsWith('ies') && window.DICTIONARY.has(word.slice(0, -3) + 'y')) return true;
+  if (word.endsWith('es') && window.DICTIONARY.has(word.slice(0, -2))) return true;
+  return window.DICTIONARY.has(word.slice(0, -1));
+}
 
 // Deterministic PRNG (fnv-1a hash → mulberry32) seeded from a string, so a given
 // seed always produces the same board.
@@ -53,13 +67,27 @@ class Game {
   // Random word of a given length (or any length when omitted), never repeating
   // a word already dealt this game. Falls back to the full pool only if every
   // word of that length has been used (won't happen within the 25-word cap).
+  // Plurals are down-weighted (not excluded) so fewer reach the bank.
   drawWord(length) {
     const pool = length ? this.buckets[length] : window.BANK_POOL;
     let candidates = pool.filter((w) => !this.used.has(w));
     if (candidates.length === 0) candidates = pool;
-    const word = candidates[Math.floor(this.rng() * candidates.length)];
+    const word = this.weightedPick(candidates);
     this.used.add(word);
     return word;
+  }
+
+  // Pick one word at random, weighting plurals down by PLURAL_WEIGHT so they
+  // appear at a fraction of their natural rate without ever being eliminated.
+  // Deterministic via this.rng, so the daily board stays stable.
+  weightedPick(candidates) {
+    const weights = candidates.map((w) => (isLikelyPlural(w) ? PLURAL_WEIGHT : 1));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = this.rng() * total;
+    for (let i = 0; i < candidates.length; i++) {
+      if ((r -= weights[i]) < 0) return candidates[i];
+    }
+    return candidates[candidates.length - 1];
   }
 
   // How many bank words currently exist of each available length.
@@ -70,10 +98,12 @@ class Game {
     return counts;
   }
 
-  // Desired number of bank words of each length: two of every length (with 10
-  // slots over lengths 3–7, that's 2/2/2/2/2).
-  targetFor() {
-    return 2;
+  // Desired number of bank words of each length. Shorter words dominate (they
+  // cross easily and keep the game flowing); longer words appear but stay a
+  // minority. The values must sum to BANK_SIZE; lengths absent here (or absent
+  // from the pool) simply never appear. Tune this to reshape the bank.
+  targetFor(len) {
+    return Game.LENGTH_TARGETS[len] || 0;
   }
 
   // The length whose bank count is furthest below its target (ties broken
@@ -243,6 +273,11 @@ class Game {
     };
   }
 }
+
+// Standing composition of the 10-slot bank by word length (sums to BANK_SIZE):
+// weighted toward 4–6, with a single 8 and 9 so longer words show up but stay
+// rare. Lengths not listed never enter the bank.
+Game.LENGTH_TARGETS = { 3: 1, 4: 2, 5: 2, 6: 2, 7: 1, 8: 1, 9: 1 };
 
 window.Game = Game;
 window.BANK_SIZE = BANK_SIZE;
