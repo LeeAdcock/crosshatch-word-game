@@ -16,6 +16,19 @@ dependency-free vanilla JS served as static files; `node_modules` exists only fo
 `scripts/build-words.js`. The word data (`public/data/*.txt`) is committed, so the
 game runs with a clean checkout and no `npm install`.
 
+## Deployment
+
+The production site is a **Cloudflare Worker with static assets** serving `public/`,
+live at <https://crosshatch-word-game.lee-06e.workers.dev/>. No server code runs in
+production — `server.js` is local-dev only. The Cloudflare build command is empty and
+the deploy serves `public/` directly (the committed word lists mean no build/install
+is needed). The GitHub remote is `LeeAdcock/crosshatch-word-game`.
+
+To verify a change locally without a browser, the client modules can be loaded under
+Node with a small `global.window` shim + `vm` context (they only need `window`,
+`DICTIONARY`, and `BANK_POOL`) — useful for reproducing a deterministic daily game or
+exercising `validatePlacement`/`deriveBonusWord`/`findHint` headlessly.
+
 ## Architecture
 
 The app is a single-page browser game. `server.js` is a minimal static file server
@@ -26,9 +39,10 @@ with **no game logic** — all logic is client-side under `public/js/`.
 There is no module system. Each file in `public/js/` defines classes/functions and
 attaches them to `window` (e.g. `window.Grid`, `window.validatePlacement`,
 `window.isWord`). `index.html` loads scripts in **strict dependency order**:
-`words → dictionary → grid → placement → game → drag → main`. Adding a new file
-means inserting a `<script>` tag in the right position; cross-file calls go through
-`window.*`.
+`words → dictionary → grid → placement → bonus → game → drag → main → instructions →
+theme`. Adding a new file means inserting a `<script>` tag in the right position;
+cross-file calls go through `window.*`. (`theme.js` is also bootstrapped by a tiny
+inline `<head>` script that sets `data-theme` before first paint — see Theming.)
 
 ### The board model is sparse and infinite (`grid.js`)
 
@@ -75,6 +89,16 @@ separate, smaller list of common words.
   bonuses for forming multiple words in one placement (`comboBonus`). `formedWords`
   distinguishes words a placement *creates/extends* (has a new tile) from words it
   merely crosses (no new tile).
+- **Gift/bonus words (`bonus.js`):** `deriveBonusWord(grid, used)` searches the
+  *current board* for the best-fitting unused dictionary word (most connections, then
+  Scrabble value) and is offered as an amber bank tile. `BONUS_EVERY = 5` triggers an
+  offer, but each placement increments `drawn` (the dealt-word counter, capped at
+  `MAX_WORDS`), so `drawn` hits the cap by the 15th placement — meaning **exactly two
+  gifts per game, after the 5th and 10th word.** Because it's derived from the
+  player's board, the gift differs per player even on the shared daily seed.
+- **Deadlock + hint:** `anyPlaceable()` / `candidateAnchors()` detect when no bank
+  word fits anywhere (strikes the bank through). `findHint()` returns the best legal
+  placement (most crossings); its UI button exists but is hidden by default.
 
 ### Drag, auto-orientation, and rendering (`drag.js`, `main.js`)
 
@@ -86,16 +110,35 @@ calls back into `main.js`'s `resolve` hook.
 word so any of its letters can land on the hovered cell, validates each candidate,
 and picks the best legal placement (most crossings, then least shift from the grab
 point, then previous orientation to avoid flicker). This is why the word "rotates
-itself" — there is no manual rotate control. Falling back to the closest-to-snapping
-candidate when nothing is legal drives the red preview.
+itself" — there is no manual rotate control. Only **legal** placements are tinted
+green (the ghost tiles and the cells beneath); when nothing is legal the ghost stays
+plain — there is no red "bad" state.
 
 `main.js` also handles all DOM rendering, the virtualized infinite-board window
 (`renderWindow` / `ensureCoverage`), crossword numbering, the bbox overlay, and
 placement celebration popups. `ENABLE_WORD_MOVE` (top of `main.js`) gates the
 currently-disabled feature of dragging an already-placed word.
 
+### Dialogs and theming (`instructions.js`, `theme.js`, `main.js`)
+
+- **How-to dialog (`instructions.js`):** shown on first visit, gated by a
+  `crosshatch_howto_seen` cookie; reopenable via the header **?** button.
+- **End-of-game dialog (`main.js`):** opens on completion or a dead end. Reuses
+  `boardAscii()` (the emoji schematic also logged to the console) for a shareable
+  result; clicking the board copies it. `startGame()` (extracted so "Restart" can
+  replay the same daily seed) resets per-game state and re-renders.
+- **Theming (`theme.js` + inline `<head>` bootstrap):** every color in `styles.css`
+  resolves through a CSS variable; the light palette is the `:root` default and dark
+  overrides live under `[data-theme="dark"]`. The inline bootstrap sets `data-theme`
+  before first paint (cookie `crosshatch_theme` → `prefers-color-scheme` → light).
+  `theme.js` wires the **☾ / ☀** toggle, persists the choice, and follows live OS
+  changes until the user chooses. When adding UI, use the variables (never hardcode a
+  color) so both modes stay correct.
+
 ## Tunables
 
-Constants live at the top of their modules: `BANK_SIZE` / `MAX_WORDS` (`game.js`),
-`LETTER_SCORES` (`dictionary.js`), `CELL` size (`drag.js`, must match `--cell` in
-`styles.css`), and `VIEW_BUFFER` / `RECENTER_AT` / `PITCH` for rendering (`main.js`).
+Constants live at the top of their modules: `BANK_SIZE` / `MAX_WORDS` / `BONUS_EVERY`
+(`game.js`), `LETTER_SCORES` (`dictionary.js`), `MIN_BONUS_LEN` / `MAX_BONUS_LEN`
+(`bonus.js`), `CELL` size (`drag.js`, must match `--cell` in `styles.css`), and
+`VIEW_BUFFER` / `RECENTER_AT` / `PITCH` for rendering (`main.js`). Theme colors are
+all CSS variables in `styles.css` (`:root` light defaults + `[data-theme="dark"]`).
