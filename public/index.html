@@ -4,6 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Crosshatch</title>
+  <!-- Apply the theme before first paint to avoid a flash of the wrong mode: use the
+       saved cookie if present, else the OS preference, else light. js/theme.js handles
+       the toggle button and writing the cookie. -->
+  <script>
+    (function () {
+      try {
+        var m = document.cookie.match(/(?:^|; )crosshatch_theme=([^;]*)/);
+        var pref = m ? decodeURIComponent(m[1]) : null; // 'light' | 'dark' | null
+        var dark = pref ? pref === 'dark'
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
   <link rel="icon" type="image/svg+xml" href="./images/crosshatch-mark-inverted.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -13,7 +29,10 @@
       <h1><img class="brand-mark" src="./images/crosshatch-mark-inverted.svg" alt="" />Crosshatch</h1>
       <p class="tagline">The daily uncrossword game</p>
     </div>
-    <button id="help-btn" class="help-btn" type="button" aria-label="How to play" title="How to play">?</button>
+    <div class="topbar-tools">
+      <button id="theme-btn" class="help-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">☾</button>
+      <button id="help-btn" class="help-btn" type="button" aria-label="How to play" title="How to play">?</button>
+    </div>
   </header>
 
   <!-- How-to-play dialog. Shown automatically on a visitor's first load (gated by a
@@ -56,10 +75,11 @@
           Compact, high-value boards win.</li>
         <li>Forming <strong>several words in one drop</strong> earns combo bonuses
           (<em>Double word!</em>, <em>Triple word!</em>, and up).</li>
-        <li>Every few placements you earn a <strong>🎁 bonus word</strong> (an amber tile
-          pinned to the top of the bank). It's <strong>chosen just for you</strong> — a word
-          that slots perfectly into <em>your</em> crossword and no one else's. Play it next for
-          big points; it expires if you place anything else first.</li>
+        <li><strong>Twice a game</strong> — after your 5th and 10th word — you earn a
+          <strong>🎁 bonus word</strong> (an amber tile pinned to the top of the bank). It's
+          <strong>chosen just for you</strong> — a word that slots perfectly into <em>your</em>
+          crossword and no one else's. Play it next for big points; it expires if you place
+          anything else first.</li>
       </ul>
 
       <button id="howto-ok" class="modal-ok" type="button">Got it</button>
@@ -123,5 +143,6 @@
   <script src="js/drag.js"></script>
   <script src="js/main.js"></script>
   <script src="js/instructions.js"></script>
+  <script src="js/theme.js"></script>
 </body>
 </html>

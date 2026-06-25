@@ -696,6 +696,24 @@ function openGameOver(completed) {
   gameoverHintEl.textContent = 'Tap the board to copy your result';
   gameoverHintEl.classList.remove('copied');
   gameoverEl.hidden = false;
+  fitGameOverBoard(); // must run after it's visible so widths can be measured
+}
+
+// Shrink the ASCII board's font so a wide board fits the dialog instead of being
+// clipped. Compares the board's natural width to the modal's inner width and scales
+// the font-size down proportionally (emoji scale with font-size, so columns stay
+// aligned). Capped at the CSS base size for small boards.
+function fitGameOverBoard() {
+  const el = gameoverBoardEl;
+  el.style.fontSize = ''; // reset to the CSS base before measuring
+  const modal = el.closest('.modal');
+  if (!modal) return;
+  const avail = modal.clientWidth - 64; // minus the modal's horizontal padding (32+32)
+  const natural = el.scrollWidth;
+  if (natural > avail && avail > 0) {
+    const base = parseFloat(getComputedStyle(el).fontSize) || 22;
+    el.style.fontSize = `${Math.max(7, Math.floor(base * avail / natural))}px`;
+  }
 }
 
 function closeGameOver() {

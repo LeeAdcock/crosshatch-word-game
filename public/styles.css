@@ -5,16 +5,96 @@
   font-display: swap;
 }
 
+/* Theme palette. Light values are the defaults here; the dark overrides live in the
+   [data-theme="dark"] block below. The theme is set on <html data-theme> by an inline
+   bootstrap in index.html (before first paint) and toggled by js/theme.js. Every color
+   in the app resolves through one of these variables so both modes stay configurable. */
 :root {
-  --cell: 32px;
-  --ink: #111;          /* black text, lines, borders */
-  --paper: #fff;        /* white background */
-  --empty: #e6e6e6;     /* open grid cells (light gray) */
-  --seed: #fff;         /* starting word reads as filled (white) */
-  --good: #dcefe1;      /* legal-drop preview fill (soft green) */
-  --line: #111;         /* grid lines */
+  --cell: 32px;         /* not a color — layout constant */
+  color-scheme: light;
+
+  /* surfaces & structure */
+  --ink: #111;          /* primary text, borders */
+  --paper: #fff;        /* page + filled-tile + card background */
+  --empty: #e6e6e6;     /* open grid cells (recessed) */
+  --line: #111;         /* grid lines (gaps showing through the board) */
   --rule: #ddd;         /* light separators */
-  --dead: #f4310d;      /* vivid red for unplaceable words, keyed to the blue/amber */
+  --inbox-overlay: #000;          /* fades in over open cells inside the blue box */
+  --halo: rgba(255, 255, 255, 0.85); /* background-matched glow behind overlay text */
+
+  /* accent (blue) */
+  --accent: #1e6fff;
+  --accent-hover: #155ad6;
+  --on-accent: #fff;              /* text on accent/seed surfaces */
+  --accent-glow: rgba(30, 111, 255, 0.45);
+
+  /* bonus (amber/gold) */
+  --bonus: #f4c20d;
+  --on-bonus: #111;               /* text on the (always-amber) bonus tiles */
+  --bonus-glow: rgba(244, 194, 13, 0.7); /* golden glow behind the score */
+  --bonus-msg: #b8860b;
+  --combo: #e8a200;
+
+  /* status */
+  --good: #dcefe1;      /* legal-drop preview / hint base fill (soft green) */
+  --hint-mid: #8fd6a3;  /* hint pulse midpoint */
+  --success: #2e7d32;   /* valid ghost border, "copied" text */
+  --error: #c0392b;     /* error messages, negative score */
+  --dead: #f4310d;      /* unplaceable words */
+
+  /* animation flash midpoints */
+  --flash-cell: #9ec5ff;
+  --flash-seed-mid: #8ab4ff;
+  --flash-bonus-mid: #ffe07a;
+  --flash-combo: #ffd21e;
+
+  /* misc */
+  --kbd-bg: #f0f0f0;
+  --kbd-border: #bbb;
+  --backdrop: rgba(0, 0, 0, 0.45);
+  --modal-shadow: rgba(0, 0, 0, 0.35);
+  --board-inset: rgba(0, 0, 0, 0.3);
+}
+
+/* Dark theme: a charcoal-navy base matched to the logo's #15171c. Filled tiles read
+   as lifted above the darker open cells, and grid lines become a visible mid-gray. */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink: #ECEAE3;
+  --paper: #15171c;
+  --empty: #1a1d22;
+  --line: #3a3f4a;
+  --rule: #33373d;
+  --inbox-overlay: #fff;          /* flip: lighten in-box cells instead of darkening */
+  --halo: rgba(0, 0, 0, 0.85);    /* flip: dark halo keeps overlay text readable */
+
+  --accent: #2e7bff;
+  --accent-hover: #5a93ff;
+  --on-accent: #fff;
+  --accent-glow: rgba(46, 123, 255, 0.5);
+
+  --bonus: #f4c20d;
+  --bonus-glow: rgba(244, 194, 13, 0.55);
+  --bonus-msg: #e0a915;
+  --combo: #f0b62a;
+
+  --good: #21402c;      /* dark-green fill so the (light) letters stay readable */
+  --hint-mid: #2f6b43;
+  --success: #5bd07e;
+  --error: #ff6b5e;
+  --dead: #ff5436;
+
+  --flash-cell: #2b4a86;
+  --flash-seed-mid: #3a63b5;
+  --flash-bonus-mid: #6a560f;
+  --flash-combo: #6a5a12;
+
+  --kbd-bg: #23262e;
+  --kbd-border: #3a3f4a;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --modal-shadow: rgba(0, 0, 0, 0.6);
+  --board-inset: rgba(0, 0, 0, 0.55);
 }
 
 * { box-sizing: border-box; }
@@ -58,7 +138,7 @@ body {
   font-weight: 500;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #1e6fff;
+  color: var(--accent);
 }
 
 /* Score hovers in the top-right corner of the board, above the inset shadow, so it
@@ -80,13 +160,15 @@ body {
 .score-overlay .stat-label {
   opacity: 0.85;
   text-shadow:
-    0 0 3px var(--paper), 0 0 3px var(--paper),
-    0 0 7px var(--paper), 0 0 7px var(--paper);
+    0 0 3px var(--halo), 0 0 3px var(--halo),
+    0 0 7px var(--halo), 0 0 7px var(--halo);
 }
 .stat-value { font-size: 40px; font-weight: 700; line-height: 1.05; } /* +30% */
-#score { color: #1e6fff; text-shadow: 0 0 16px rgba(244, 194, 13, 0.7); } /* blue text, golden glow — matches gift word tiles */
+#score { color: var(--accent); text-shadow: 0 0 16px var(--bonus-glow); } /* blue text, golden glow — matches gift word tiles */
 
-/* Round ? button in the top-right of the header that reopens the how-to dialog. */
+/* Round header buttons: ? reopens the how-to dialog, ☾/☀ toggles dark mode. They
+   sit together at the top-right; .topbar-tools groups them with a small gap. */
+.topbar-tools { display: flex; align-items: center; gap: 8px; }
 .help-btn {
   flex: 0 0 auto;
   width: 34px;
@@ -112,7 +194,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop);
 }
 .modal-backdrop[hidden] { display: none; }
 
@@ -126,7 +208,7 @@ body {
   color: var(--ink);
   border: 3px solid var(--ink);
   padding: 28px 32px 32px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 40px var(--modal-shadow);
 }
 .modal h2 {
   margin: 0 0 14px;
@@ -140,7 +222,7 @@ body {
   font-size: 14px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: #1e6fff;
+  color: var(--accent);
 }
 .modal p, .modal li { font-size: 15px; line-height: 1.5; }
 .howto-lede { margin: 0; }
@@ -178,8 +260,8 @@ body {
   width: 100%;
   padding: 12px;
   border: 2px solid var(--ink);
-  background: #1e6fff;
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   font-family: 'Quicksand', system-ui, sans-serif;
   font-size: 16px;
   font-weight: 700;
@@ -187,7 +269,7 @@ body {
   text-transform: uppercase;
   cursor: pointer;
 }
-.modal-ok:hover { background: #155ad6; }
+.modal-ok:hover { background: var(--accent-hover); }
 
 /* Secondary action (Restart): paper tile rather than the solid blue. */
 .modal-ok-secondary {
@@ -208,8 +290,8 @@ body {
   font-size: 56px;
   font-weight: 800;
   line-height: 1.05;
-  color: #1e6fff;
-  text-shadow: 0 0 16px rgba(244, 194, 13, 0.7);
+  color: var(--accent);
+  text-shadow: 0 0 16px var(--bonus-glow);
 }
 
 /* The mini ASCII board. Emoji squares are uniform width, so they tile cleanly in
@@ -227,6 +309,8 @@ body {
   cursor: pointer;
   user-select: none;
   transition: transform 0.1s ease;
+  max-width: 100%;     /* JS auto-fits font-size; this is the safety net */
+  overflow-x: auto;    /* if a board is still too wide, scroll rather than clip */
 }
 .gameover-board:hover { transform: scale(1.03); }
 .gameover-board:active { transform: scale(0.98); }
@@ -238,7 +322,7 @@ body {
   text-transform: uppercase;
   opacity: 0.6;
 }
-.gameover-hint.copied { color: #2e7d32; opacity: 1; font-weight: 700; }
+.gameover-hint.copied { color: var(--success); opacity: 1; font-weight: 700; }
 
 .gameover-actions {
   display: flex;
@@ -253,12 +337,12 @@ body {
   min-height: 18px;
   opacity: 0.85;
 }
-.message.error { color: #c0392b; font-weight: 700; opacity: 1; }
-.message.bonus { color: #b8860b; font-weight: 700; opacity: 1; }
+.message.error { color: var(--error); font-weight: 700; opacity: 1; }
+.message.bonus { color: var(--bonus-msg); font-weight: 700; opacity: 1; }
 
 kbd {
-  background: #f0f0f0;
-  border: 1px solid #bbb;
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
   border-radius: 3px;
   padding: 0 5px;
   font-size: 12px;
@@ -285,7 +369,7 @@ kbd {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  box-shadow: inset 0 0 18px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 18px 2px var(--board-inset);
   z-index: 10;
 }
 
@@ -318,8 +402,8 @@ kbd {
 .bbox {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid #1e6fff;
-  box-shadow: 0 0 16px 4px rgba(30, 111, 255, 0.45);
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 16px 4px var(--accent-glow);
   pointer-events: none;
   z-index: 5;
   /* Ease the box to its new size/position when the crossword grows or shrinks. */
@@ -346,8 +430,8 @@ kbd {
 .cell .glyph { display: inline-block; }
 
 .cell.filled { background: var(--paper); color: var(--ink); }
-.cell.seed { background: #1e6fff; color: #fff; } /* first-placed word, matching the box */
-.cell.bonus { background: #f4c20d; color: var(--ink); } /* placed bonus word — amber, contrasts the blue */
+.cell.seed { background: var(--accent); color: var(--on-accent); } /* first-placed word, matching the box */
+.cell.bonus { background: var(--bonus); color: var(--on-bonus); } /* placed bonus word — amber, contrasts the blue */
 /* Open cells inside the blue box read a touch darker. A fading dark overlay does it
    (rather than a background swap) so the tint eases in/out as the box grows or
    rotates, without affecting the instant preview/letter colors underneath. */
@@ -355,7 +439,7 @@ kbd {
   content: '';
   position: absolute;
   inset: 0;
-  background: #000;
+  background: var(--inbox-overlay);
   opacity: 0;
   transition: opacity 0.45s ease;
   pointer-events: none;
@@ -373,7 +457,8 @@ kbd {
   line-height: 1;
   color: var(--ink);
 }
-.cell.seed .num { color: #fff; } /* readable on the blue seed tiles */
+.cell.seed .num { color: var(--on-accent); } /* readable on the blue seed tiles */
+.cell.bonus .num { color: var(--on-bonus); } /* readable on the amber bonus tiles */
 
 /* Numbers fade rather than blink as the board rotates and renumbers. A newly-added
    tag plays num-in; one that's being removed plays num-out (then is deleted in JS). */
@@ -387,34 +472,34 @@ kbd {
 /* Brief pulse on the words a placement just formed. */
 .cell.flash { animation: cellFlash 0.7s ease-out; }
 @keyframes cellFlash {
-  0% { background: #9ec5ff; }
+  0% { background: var(--flash-cell); }
   100% { background: var(--paper); }
 }
 /* Seed tiles are blue with white text, so they pulse blue→blue (not to white,
    which would hide the letters). */
 .cell.seed.flash { animation: seedFlash 0.7s ease-out; }
 @keyframes seedFlash {
-  0% { background: #8ab4ff; }
-  100% { background: #1e6fff; }
+  0% { background: var(--flash-seed-mid); }
+  100% { background: var(--accent); }
 }
 /* Bonus tiles are amber; pulse amber→amber so the letters stay readable. */
 .cell.bonus.flash { animation: bonusFlash 0.7s ease-out; }
 @keyframes bonusFlash {
-  0% { background: #ffe07a; }
-  100% { background: #f4c20d; }
+  0% { background: var(--flash-bonus-mid); }
+  100% { background: var(--bonus); }
 }
 
 /* When a bonus word is placed, the words it connects pulse yellow (not the
    default blue). Each base tile type ends the pulse at its own resting color. */
 .cell.flash-bonus { animation: connectFlash 0.7s ease-out; }
 @keyframes connectFlash {
-  0% { background: #ffd21e; }
+  0% { background: var(--flash-combo); }
   100% { background: var(--paper); }
 }
 .cell.seed.flash-bonus { animation: connectFlashSeed 0.7s ease-out; }
 @keyframes connectFlashSeed {
-  0% { background: #ffd21e; }
-  100% { background: #1e6fff; }
+  0% { background: var(--flash-combo); }
+  100% { background: var(--accent); }
 }
 .cell.bonus.flash-bonus { animation: bonusFlash 0.7s ease-out; }
 
@@ -427,11 +512,11 @@ kbd {
   font-size: 22px;
   pointer-events: none;
   z-index: 2000;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 2px var(--halo);
   animation: floatUp 0.9s ease-out forwards;
 }
-.score-pop.pos { color: #1e6fff; }
-.score-pop.neg { color: #c0392b; }
+.score-pop.pos { color: var(--accent); }
+.score-pop.neg { color: var(--error); }
 @keyframes floatUp {
   0% { opacity: 0; transform: translate(-50%, -40%); }
   20% { opacity: 1; }
@@ -446,8 +531,8 @@ kbd {
   font-weight: 800;
   font-size: 18px;
   white-space: nowrap;
-  color: #e8a200;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+  color: var(--combo);
+  text-shadow: 0 1px 2px var(--halo);
   pointer-events: none;
   z-index: 2000;
   animation: comboPop 2.2s ease-out forwards;
@@ -482,7 +567,7 @@ kbd {
   border-bottom: 1px solid var(--rule);
   padding-bottom: 8px;
 }
-.bank-count { font-weight: 700; letter-spacing: 0; color: #1e6fff; }
+.bank-count { font-weight: 700; letter-spacing: 0; color: var(--accent); }
 
 /* Chips stack from the top; the list takes the remaining height of the fixed-size
    bank box and scrolls only if the words ever overflow it. */
@@ -509,7 +594,7 @@ kbd {
 .cell.hint { animation: hintPulse 0.9s ease-in-out infinite; }
 @keyframes hintPulse {
   0%, 100% { background: var(--good); }
-  50% { background: #8fd6a3; }
+  50% { background: var(--hint-mid); }
 }
 
 /* Bank words look like crossword tiles: white with a black border. */
@@ -536,7 +621,7 @@ kbd {
 }
 /* The board-derived bonus word reads as a special amber tile, pinned to the top
    of the bank. */
-.chip.bonus-chip { background: #f4c20d; border-color: #111; }
+.chip.bonus-chip { background: var(--bonus); border-color: var(--on-bonus); color: var(--on-bonus); }
 /* A gift marker while the bonus word waits in the bank. Lives in ::before so it
    never affects the drag ghost or grab-letter math (both read the .word span). */
 .chip.bonus-chip::before { content: '🎁'; margin-right: 8px; font-size: 18px; line-height: 1; }
@@ -586,4 +671,4 @@ kbd {
    itself: green tiles + green border when the snapped placement is legal. An
    illegal placement stays plain white — no green means it won't drop. */
 .ghost.valid .gtile { background: var(--good); }
-.ghost.valid { border-color: #2e7d32; }
+.ghost.valid { border-color: var(--success); }
