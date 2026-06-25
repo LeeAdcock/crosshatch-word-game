@@ -141,12 +141,24 @@ class DragController {
       const anchor = this.hooks.cellTopLeft(r.row, r.col);
       if (anchor) this.snapGhost(anchor.x, anchor.y);
       else this.moveGhost(e.clientX, e.clientY);
+      // The ghost sits on top of the cells preview() colors, so tint the ghost
+      // itself green/red — otherwise the validity colors are hidden beneath it.
+      this.setGhostValidity(r.valid);
       this.hooks.preview(a.word, r.row, r.col, r.orientation, r.valid);
       a.resolved = r;
     } else {
       this.moveGhost(e.clientX, e.clientY);
+      this.setGhostValidity(null); // off the board: neutral ghost, no verdict yet
       a.resolved = null;
     }
+  }
+
+  // Tint the ghost green only when the current placement is legal; an illegal or
+  // off-board placement leaves it plain white (no green = won't drop).
+  setGhostValidity(valid) {
+    const a = this.active;
+    if (!a || !a.ghost) return;
+    a.ghost.classList.toggle('valid', valid === true);
   }
 
   onKey(e) {

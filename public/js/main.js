@@ -33,6 +33,8 @@ let viewRows = 0;
 let viewCols = 0;
 // Cells currently carrying a preview class, so we can clear them cheaply.
 let previewed = [];
+// Set once no remaining bank word fits anywhere — the bank is then struck through.
+let deadlocked = false;
 // Blue overlay marking the bounding box of all filled cells.
 let bboxEl = null;
 // Currently-displayed crossword number tags, keyed "row,col" → the <span>. Kept so
@@ -240,10 +242,179 @@ function refreshBoard() {
   ensureCoverage();
 }
 
+// Print a minified, schematic picture of the board to the console using white
+// (filled) and black (empty) squares. Rather than drawing every cell, it collapses
+// the "boring" straight stretches of each word — the cells that only carry a line
+// forward — keeping just the structurally meaningful coordinates: word ends and
+// crossings. So RUNNER crossing BANKER, however long, reduces to a clean 3×3 cross
+// (a 3-square horizontal overlapping a 3-square vertical). Purely a debug view.
+//
+// Method: coordinate compression. A column is kept if it carries a vertical word
+// (so each vertical word gets its own column) or is the end of a horizontal word
+// (so stubs survive); rows are kept symmetrically. Interior pass-through cells
+// collapse away. Within any single word every kept coordinate it spans is still
+// filled, so its line stays continuous.
+//
+// The only "hard" lines are crossing lines: a column carrying a vertical word, a
+// row carrying a horizontal word. Everything else — the stubs sticking out past a
+// crossing, the straight runs between crossings — is filler that collapses. Each
+// maximal run of non-crossing lines becomes a single band, so a word crossed in its
+// middle shows as exactly stub · cross · stub, and two words crossing the same spine
+// share one stub band on each side. A band that runs through a gap (e.g. APPEALED
+// continuing between the two separate words that cross it) stays filled in its own
+// column while the words beside it read as empty, keeping everything separated.
+//
+// Cells keep their colors: 🟦 for the original seed word, 🟨 for gift/bonus words,
+// 🟩 where a seed and a gift word overlap, ⬛ for ordinary letters (crossings,
+// stubs, and pass-throughs alike), ⬜ for empty.
+function logBoardAscii() {
+  const b = game.grid.bounds();
+  if (!b) return;
+  const get = (r, c) => game.grid.get(r, c);
+  const seedKeys = new Set(game.seedCells.map((c) => `${c.row},${c.col}`));
+  const bonusKeys = game.bonusCells; // Set of "row,col"
+
+  // Anchor columns hold a vertical word; anchor rows hold a horizontal word. Track
+  // which lines are non-empty so empty filler can be dropped at the board's margins.
+  const anchorCol = new Set(), anchorRow = new Set();
+  const nonEmptyCol = new Set(), nonEmptyRow = new Set();
+  for (const [r, c] of game.grid.entries()) {
+    nonEmptyCol.add(c); nonEmptyRow.add(r);
+    if (get(r - 1, c) || get(r + 1, c)) anchorCol.add(c);
+    if (get(r, c - 1) || get(r, c + 1)) anchorRow.add(r);
+  }
+
+  // Walk one axis, emitting anchor coordinates as-is and collapsing each run of
+  // non-anchor coordinates to a single band [lo,hi]. A band is kept if it holds any
+  // letter (a stub or a pass-through) or if it's an interior gap between two anchors
+  // (an empty separator that stops otherwise-adjacent words from fabricating a word).
+  const track = (lo, hi, isAnchor, nonEmpty) => {
+    const items = [];
+    let start = null;
+    const flush = (a, z, interior) => {
+      let hasFill = false;
+      for (let k = a; k <= z; k++) if (nonEmpty.has(k)) { hasFill = true; break; }
+      if (hasFill || interior) items.push({ band: [a, z] });
+    };
+    for (let k = lo; k <= hi; k++) {
+      if (isAnchor.has(k)) {
+        if (start !== null) { flush(start, k - 1, items.length > 0); start = null; }
+        items.push(k);
+      } else if (start === null) start = k;
+    }
+    if (start !== null) flush(start, hi, false); // trailing run is a margin, not interior
+    return items;
+  };
+  let rowItems = track(b.minR, b.maxR, anchorRow, nonEmptyRow);
+  let colItems = track(b.minC, b.maxC, anchorCol, nonEmptyCol);
+
+  const range = (x) => (typeof x === 'number' ? [x, x] : x.band);
+  const wide = (x) => { const [a, z] = range(x); return z > a; };
+  // True if any real cell in the row-band × col-band rectangle is filled.
+  const filledRC = (R, C) => {
+    const [r0, r1] = range(R), [c0, c1] = range(C);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) if (get(r, c)) return true;
+    return false;
+  };
+  // Replace items[idx] (a multi-line band) with its first line and the rest, so a
+  // band is peeled one line at a time.
+  const splitItem = (items, idx) => {
+    const [a, z] = range(items[idx]);
+    return items.slice(0, idx).concat([{ band: [a, a] }, { band: [a + 1, z] }], items.slice(idx + 1));
+  };
+
+  // Faithfulness pass. The run-collapsing above can project two different words
+  // onto one band, making them look adjacent when they never connect on the real
+  // board. Repeatedly find a pair of touching blocks with NO real orthogonal
+  // adjacency across their shared edge, then peel the responsible band one line
+  // at a time. Simple crossings never trip this and stay fully collapsed; only
+  // genuinely ambiguous dense regions expand, just enough to separate the words.
+  for (;;) {
+    let bad = null;
+    for (let i = 0; i < rowItems.length && !bad; i++) {
+      const [ra, rb] = range(rowItems[i]);
+      for (let j = 0; j + 1 < colItems.length; j++) {
+        if (!filledRC(rowItems[i], colItems[j]) || !filledRC(rowItems[i], colItems[j + 1])) continue;
+        const cl = range(colItems[j])[1], cr = range(colItems[j + 1])[0]; // touching edge
+        let witness = false;
+        for (let r = ra; r <= rb; r++) if (get(r, cl) && get(r, cr)) { witness = true; break; }
+        if (!witness) { bad = { dir: 'H', i, j }; break; }
+      }
+    }
+    for (let j = 0; j < colItems.length && !bad; j++) {
+      const [ca, cb] = range(colItems[j]);
+      for (let i = 0; i + 1 < rowItems.length; i++) {
+        if (!filledRC(rowItems[i], colItems[j]) || !filledRC(rowItems[i + 1], colItems[j])) continue;
+        const rt = range(rowItems[i])[1], rd = range(rowItems[i + 1])[0]; // touching edge
+        let witness = false;
+        for (let c = ca; c <= cb; c++) if (get(rt, c) && get(rd, c)) { witness = true; break; }
+        if (!witness) { bad = { dir: 'V', i, j }; break; }
+      }
+    }
+    if (!bad) break;
+    // Peel a band involved in the false adjacency (at least one always spans >1
+    // line, else the edge cells themselves would witness it). Prefer the band
+    // along the merge so the expansion is minimal.
+    if (bad.dir === 'H') {
+      if (wide(rowItems[bad.i])) rowItems = splitItem(rowItems, bad.i);
+      else if (wide(colItems[bad.j])) colItems = splitItem(colItems, bad.j);
+      else if (wide(colItems[bad.j + 1])) colItems = splitItem(colItems, bad.j + 1);
+      else break; // defensive: nothing to split
+    } else {
+      if (wide(colItems[bad.j])) colItems = splitItem(colItems, bad.j);
+      else if (wide(rowItems[bad.i])) rowItems = splitItem(rowItems, bad.i);
+      else if (wide(rowItems[bad.i + 1])) rowItems = splitItem(rowItems, bad.i + 1);
+      else break; // defensive: nothing to split
+    }
+  }
+
+  // Glyph for a rendered cell: scan every real cell in its row-band × col-band and
+  // pick a color by priority (seed+bonus overlap > seed > bonus > ordinary), or
+  // empty if none is filled. A block holding both a seed and a gift cell — where
+  // the original word and a gift word cross — reads green.
+  const glyph = (R, C) => {
+    const [r0, r1] = range(R), [c0, c1] = range(C);
+    let seed = false, bonus = false, plain = false;
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (!get(r, c)) continue;
+        const key = `${r},${c}`;
+        // Checked independently so a single cell shared by the seed and a gift
+        // word sets both flags (→ green), not just the first one matched.
+        const isSeed = seedKeys.has(key), isBonus = bonusKeys.has(key);
+        if (isSeed) seed = true;
+        if (isBonus) bonus = true;
+        if (!isSeed && !isBonus) plain = true;
+      }
+    }
+    return seed && bonus ? '🟩' : seed ? '🟦' : bonus ? '🟨' : plain ? '⬛' : '⬜';
+  };
+
+  let out = '';
+  for (const R of rowItems) {
+    let line = '';
+    for (const C of colItems) line += glyph(R, C);
+    out += line + '\n';
+  }
+  console.log(out);
+}
+
+// After a placement, check whether the puzzle has reached a dead end: the bank
+// still holds words but none can be legally placed anywhere. If so, strike the
+// remaining words through in red — they can no longer be played.
+function checkDeadlock() {
+  if (deadlocked || game.bank.length === 0) return; // empty bank = complete, not stuck
+  if (game.anyPlaceable()) return;
+  deadlocked = true;
+  for (const chip of bankEl.querySelectorAll('.chip')) chip.classList.add('dead');
+  setMessage('No moves left — no remaining word fits anywhere on the board.', 'error');
+}
+
 function renderChip(item) {
   const chip = document.createElement('div');
   chip.className = 'chip';
   if (item.bonus) chip.classList.add('bonus-chip');
+  if (deadlocked) chip.classList.add('dead');
   chip.dataset.id = item.id;
 
   const word = document.createElement('span');
@@ -348,13 +519,15 @@ function clearPreview() {
   previewed = [];
 }
 
-// Highlight the cells a candidate word would occupy, colored by validity.
+// Highlight the cells a candidate word would occupy, but only when the placement
+// is legal — a valid fit reads green, an illegal one shows no fill at all.
 function preview(word, row, col, orientation, valid) {
+  if (!valid) return;
   const cells = game.grid.cellsFor(word, row, col, orientation);
   for (const { row: r, col: c } of cells) {
     const cell = cellElAt(r, c);
     if (!cell) continue;
-    cell.classList.add(valid ? 'preview-good' : 'preview-bad');
+    cell.classList.add('preview-good');
     previewed.push(cell);
   }
 }
@@ -427,11 +600,13 @@ const hooks = {
       refreshBoard();
       renderBank();
       updateStats();
+      logBoardAscii();
       celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
       if (game.bank.length === 0) setMessage(`Daily puzzle complete — final score ${commafy(game.score)}.`);
       else if (result.bonusAdded) setMessage('★ Bonus word! Place the yellow tile for big points.', 'bonus');
       else if (result.bonusForfeited) setMessage('Bonus word expired — you placed another word.');
       else setMessage('');
+      checkDeadlock();
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }
@@ -559,6 +734,7 @@ async function boot() {
   requestAnimationFrame(() => {
     const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
     renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
+    checkDeadlock();
   });
 }
 

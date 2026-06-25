@@ -11,10 +11,10 @@
   --paper: #fff;        /* white background */
   --empty: #e6e6e6;     /* open grid cells (light gray) */
   --seed: #fff;         /* starting word reads as filled (white) */
-  --good: #bfe6c8;      /* legal-drop preview fill */
-  --bad: #f3b9b4;       /* illegal-drop preview fill */
+  --good: #dcefe1;      /* legal-drop preview fill (soft green) */
   --line: #111;         /* grid lines */
   --rule: #ddd;         /* light separators */
+  --dead: #f4310d;      /* vivid red for unplaceable words, keyed to the blue/amber */
 }
 
 * { box-sizing: border-box; }
@@ -84,7 +84,110 @@ body {
     0 0 7px var(--paper), 0 0 7px var(--paper);
 }
 .stat-value { font-size: 40px; font-weight: 700; line-height: 1.05; } /* +30% */
-#score { color: #1e6fff; text-shadow: 0 0 16px rgba(30, 111, 255, 0.7); } /* blue glow */
+#score { color: #1e6fff; text-shadow: 0 0 16px rgba(244, 194, 13, 0.7); } /* blue text, golden glow — matches gift word tiles */
+
+/* Round ? button in the top-right of the header that reopens the how-to dialog. */
+.help-btn {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Quicksand', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.help-btn:hover { background: var(--ink); color: var(--paper); }
+
+/* Dimmed full-screen backdrop behind the how-to card. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.modal-backdrop[hidden] { display: none; }
+
+/* The how-to card itself: a bordered paper sheet matching the crossword tiles. */
+.modal {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  padding: 28px 32px 32px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.modal h2 {
+  margin: 0 0 14px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.modal h3 {
+  margin: 20px 0 6px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #1e6fff;
+}
+.modal p, .modal li { font-size: 15px; line-height: 1.5; }
+.howto-lede { margin: 0; }
+.modal ul { margin: 0; padding-left: 20px; }
+.modal li { margin: 5px 0; }
+
+/* Small inline color chips referenced in the rules text. */
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--ink);
+  vertical-align: -1px;
+}
+.swatch-good { background: var(--good); }
+
+/* The × in the card's top-right corner. */
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  border: none;
+  background: none;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+  opacity: 0.6;
+}
+.modal-close:hover { opacity: 1; }
+
+/* Primary dismiss button, styled like a bank tile. */
+.modal-ok {
+  margin-top: 24px;
+  width: 100%;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  background: #1e6fff;
+  color: #fff;
+  font-family: 'Quicksand', system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.modal-ok:hover { background: #155ad6; }
 
 .message {
   margin: 12px 22px 0;
@@ -222,7 +325,6 @@ kbd {
 @keyframes numOut { from { opacity: 1; } to { opacity: 0; } }
 
 .cell.preview-good { background: var(--good); color: var(--ink); }
-.cell.preview-bad { background: var(--bad); color: var(--ink); }
 
 /* Brief pulse on the words a placement just formed. */
 .cell.flash { animation: cellFlash 0.7s ease-out; }
@@ -362,6 +464,16 @@ kbd {
   text-transform: uppercase;
   font-size: 16px;
 }
+/* Dead end: no remaining bank word fits anywhere. Strike the words through and
+   recolor them red — uniform across normal and bonus tiles — to read as spent. */
+.chip.dead {
+  background: var(--paper);
+  border-color: var(--dead);
+  color: var(--dead);
+  cursor: not-allowed;
+}
+.chip.dead .word { text-decoration: line-through; text-decoration-thickness: 2px; }
+.chip.dead.bonus-chip::before { display: none; }
 
 /* Floating ghost that follows the cursor during a drag. */
 .ghost {
@@ -387,3 +499,9 @@ kbd {
   font-size: 18px;
   text-transform: uppercase;
 }
+
+/* The ghost covers the cells the preview colors, so it carries the verdict
+   itself: green tiles + green border when the snapped placement is legal. An
+   illegal placement stays plain white — no green means it won't drop. */
+.ghost.valid .gtile { background: var(--good); }
+.ghost.valid { border-color: #2e7d32; }

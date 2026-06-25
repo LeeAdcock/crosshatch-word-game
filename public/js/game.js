@@ -164,6 +164,47 @@ class Game {
     return this.bank.find((b) => b.id === id);
   }
 
+  // Cells worth testing as a placement anchor: every filled cell (a word can cross
+  // it) and every empty cell orthogonally adjacent to a filled one (a word can abut
+  // it). Anywhere else can't connect, so it can never hold a legal placement.
+  candidateAnchors() {
+    const seen = new Set();
+    const anchors = [];
+    const add = (r, c) => {
+      const key = `${r},${c}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      anchors.push({ row: r, col: c });
+    };
+    for (const [r, c] of this.grid.entries()) {
+      add(r, c);
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!this.grid.get(r + dr, c + dc)) add(r + dr, c + dc);
+      }
+    }
+    return anchors;
+  }
+
+  // True if at least one bank word can be legally placed somewhere. For each anchor
+  // we try every word, orientation, and letter-alignment (sliding the word so each
+  // of its letters lands on the anchor), stopping at the first legal placement. The
+  // happy path exits almost immediately; only a true dead end scans exhaustively.
+  anyPlaceable() {
+    const anchors = this.candidateAnchors();
+    for (const { word } of this.bank) {
+      for (const { row: ar, col: ac } of anchors) {
+        for (const orientation of ['h', 'v']) {
+          for (let i = 0; i < word.length; i++) {
+            const row = orientation === 'v' ? ar - i : ar;
+            const col = orientation === 'h' ? ac - i : ac;
+            if (window.validatePlacement(this.grid, word, row, col, orientation).valid) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   // Validate a candidate placement of any word against the current board (left
   // untouched). The first word on an empty board may go anywhere; this matters
   // when a moved word was the board's only word.

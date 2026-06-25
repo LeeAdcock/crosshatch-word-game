@@ -12,7 +12,58 @@
       <h1><img class="brand-mark" src="./images/crosshatch-mark-inverted.svg" alt="" />Crosshatch</h1>
       <p class="tagline">The daily uncrossword game</p>
     </div>
+    <button id="help-btn" class="help-btn" type="button" aria-label="How to play" title="How to play">?</button>
   </header>
+
+  <!-- How-to-play dialog. Shown automatically on a visitor's first load (gated by a
+       cookie) and reopenable any time via the header's ? button. -->
+  <div id="howto" class="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howto-title">
+      <button id="howto-close" class="modal-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="howto-title">How to play</h2>
+
+      <p class="howto-lede">
+        Crosshatch is a daily <em>uncrossword</em>: you're handed the words and an empty,
+        endless board — build the tightest crossword you can. You'll place
+        <strong>25 words</strong> in all, and the game is over once the last one is down.
+        Everyone gets the same board each day.
+      </p>
+
+      <h3>Playing</h3>
+      <ul>
+        <li><strong>Drag a word</strong> from the Word Bank onto the board. It
+          <strong>auto-rotates</strong> between across and down to find a legal fit — there's
+          no rotate button.</li>
+        <li><strong>Drag empty space</strong> to pan the infinite board.</li>
+        <li>A <span class="swatch swatch-good"></span> green highlight means the word fits and
+          can be dropped there. If it doesn't turn green, the placement isn't legal.</li>
+      </ul>
+
+      <h3>The rules</h3>
+      <ul>
+        <li>Every new word must <strong>connect</strong> to the board — cross an existing word
+          or sit right beside one.</li>
+        <li>Overlapping letters must <strong>match</strong>.</li>
+        <li><strong>Every</strong> run of two or more letters created — across <em>and</em>
+          down — must be a real word.</li>
+      </ul>
+
+      <h3>Scoring</h3>
+      <ul>
+        <li>You're rewarded for <strong>packing tightly</strong>: score grows with the value
+          of your letters per square of board used, multiplied by how many words you've placed.
+          Compact, high-value boards win.</li>
+        <li>Forming <strong>several words in one drop</strong> earns combo bonuses
+          (<em>Double word!</em>, <em>Triple word!</em>, and up).</li>
+        <li>Every few placements you earn a <strong>🎁 bonus word</strong> (an amber tile
+          pinned to the top of the bank). It's <strong>chosen just for you</strong> — a word
+          that slots perfectly into <em>your</em> crossword and no one else's. Play it next for
+          big points; it expires if you place anything else first.</li>
+      </ul>
+
+      <button id="howto-ok" class="modal-ok" type="button">Got it</button>
+    </div>
+  </div>
 
   <p id="message" class="message">Drag a bank word onto the board. Drag the board to pan.</p>
 
@@ -42,5 +93,6 @@
   <script src="js/game.js"></script>
   <script src="js/drag.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/instructions.js"></script>
 </body>
 </html>
