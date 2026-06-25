@@ -49,6 +49,11 @@ let previewed = [];
 let deadlocked = false;
 // Timer that clears the Hint highlight after a few seconds (null when inactive).
 let hintTimer = null;
+// Becomes true once the player pans or starts a drag. Until then, a window resize
+// (e.g. a phone rotating, or the mobile URL bar collapsing) re-centers on the seed
+// word so it always starts centered; after the first interaction we leave the view
+// where the player put it.
+let hasInteracted = false;
 // Blue overlay marking the bounding box of all filled cells.
 let bboxEl = null;
 // Currently-displayed crossword number tags, keyed "row,col" → the <span>. Kept so
@@ -205,11 +210,15 @@ function viewportCells() {
   return { cols: Math.ceil(w / PITCH), rows: Math.ceil(h / PITCH) };
 }
 
-// Scroll so that the given world point sits at the viewport center.
+// Scroll so that the given world point sits at the viewport center. Falls back to
+// the window size if the wrap hasn't been measured yet, so centering is correct even
+// on the very first paint regardless of window size.
 function scrollWorldToCenter(worldRow, worldCol) {
   const wrap = document.querySelector('.board-wrap');
-  wrap.scrollLeft = (worldCol - viewC0) * PITCH - wrap.clientWidth / 2;
-  wrap.scrollTop = (worldRow - viewR0) * PITCH - wrap.clientHeight / 2;
+  const w = wrap.clientWidth || window.innerWidth;
+  const h = wrap.clientHeight || window.innerHeight;
+  wrap.scrollLeft = (worldCol - viewC0) * PITCH - w / 2;
+  wrap.scrollTop = (worldRow - viewR0) * PITCH - h / 2;
 }
 
 // The world point currently at the center of the viewport.
@@ -604,6 +613,7 @@ function startFor(cell, index, orientation) {
 // piece stays near the cursor), then the previous orientation to avoid flicker.
 // When nothing is valid we fall back to the placement closest to snapping.
 function resolve(word, cell, grabIndex) {
+  hasInteracted = true; // a drag is underway; stop auto-recentering on resize
   const len = word.length;
 
   const candidates = [];
@@ -848,6 +858,7 @@ function initBoardPointer(wrap) {
       return;
     }
     // Empty space → pan.
+    hasInteracted = true; // stop auto-recentering once the player moves the board
     lastX = e.clientX; lastY = e.clientY;
     wrap.classList.add('panning');
     window.addEventListener('pointermove', panMove);
@@ -872,6 +883,7 @@ function initBoardPointer(wrap) {
 function startGame() {
   game = new Game();
   deadlocked = false;
+  hasInteracted = false; // a fresh game re-centers on resize until the player acts
   seenBankIds.clear();
   lastOrientation = 'h';
   clearPreview();
@@ -881,10 +893,17 @@ function startGame() {
 
   // Render once layout is known, centered on the seed word, filling the viewport.
   requestAnimationFrame(() => {
-    const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
-    renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
+    centerOnSeed();
     checkDeadlock();
   });
+}
+
+// Center the rendered window on the anchor/seed word — the center of the filled
+// bounding box (just the seed word at game start).
+function centerOnSeed() {
+  if (!game) return;
+  const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
+  renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
 }
 
 // Bootstrap: load the vetted word lists, wire one-time handlers, then start.
@@ -901,6 +920,15 @@ async function boot() {
   initBoardPointer(wrap);
   wireGameOver();
   document.getElementById('hint-btn').addEventListener('click', showHint);
+
+  // Keep the anchor word centered across window-size changes until the player acts
+  // (orientation flips, mobile URL-bar collapse, desktop window resize). Re-rendered
+  // on the next frame so the new viewport size is measured first.
+  window.addEventListener('resize', () => {
+    if (hasInteracted || !game) return;
+    requestAnimationFrame(centerOnSeed);
+  });
+
   startGame();
 }
 

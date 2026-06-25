@@ -672,3 +672,53 @@ kbd {
    illegal placement stays plain white — no green means it won't drop. */
 .ghost.valid .gtile { background: var(--good); }
 .ghost.valid { border-color: var(--success); }
+
+/* --- Mobile / narrow screens --- Stack the word bank under the board (instead of
+   beside it), lay its chips out in two columns, and shrink type to fit. The grid
+   cell size stays 32px on purpose: the drag-snap and render math use a matching JS
+   constant (CELL in drag.js, PITCH in main.js), so this block is layout-only. The
+   board stays pannable, so a fixed cell size is fine on small screens. */
+@media (max-width: 720px) {
+  .topbar { padding: 10px 14px; }
+  .topbar h1 { font-size: 21px; letter-spacing: 0.5px; }
+  .tagline { font-size: 11px; }
+  .topbar-tools { gap: 6px; }
+  .help-btn { width: 30px; height: 30px; font-size: 16px; }
+
+  .message { margin: 8px 14px 0; }
+
+  /* Board on top, bank hugging the bottom. */
+  .layout {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px 14px;
+  }
+  .board-frame { height: 52dvh; } /* overrides the desktop calc() height */
+
+  .bank-wrap {
+    flex: 0 0 auto;
+    width: 100%;
+    align-self: stretch;
+    max-height: 34dvh;            /* cap so the list scrolls instead of pushing the board away */
+    padding: 10px 12px 12px;
+  }
+  .bank-wrap h2 { margin-bottom: 8px; padding-bottom: 6px; font-size: 13px; }
+
+  /* Two-column word bank that scrolls within the capped bank height. */
+  .bank {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    min-height: 0;               /* let the scroll container actually shrink */
+  }
+  .chip { padding: 6px 9px; min-width: 0; }
+  .chip .word { font-size: 14px; letter-spacing: 1.5px; }
+
+  /* Score overlay a touch smaller so it doesn't crowd the board corner. */
+  .stat-value { font-size: 30px; }
+  .stat-label { font-size: 14px; }
+
+  /* Dialogs: trim side padding on small screens. */
+  .modal { padding: 22px 18px 24px; }
+}
