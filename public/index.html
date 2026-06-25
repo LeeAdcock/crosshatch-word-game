@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Crosshatch</title>
+  <link rel="icon" type="image/svg+xml" href="./images/crosshatch-mark-inverted.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -65,6 +66,31 @@
     </div>
   </div>
 
+  <!-- End-of-game dialog: opens when the puzzle is finished (or hits a dead end).
+       Shows the final score and the mini ASCII board; clicking the board copies a
+       shareable result to the clipboard. -->
+  <div id="gameover" class="modal-backdrop" hidden>
+    <div class="modal gameover-modal" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+      <button id="gameover-close" class="modal-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="gameover-title">Puzzle complete!</h2>
+      <p id="gameover-sub" class="gameover-sub">Nicely done.</p>
+
+      <div class="gameover-score">
+        <span class="stat-label">Final score</span>
+        <span id="gameover-score" class="gameover-score-value">0</span>
+      </div>
+
+      <pre id="gameover-board" class="gameover-board" role="button" tabindex="0"
+        title="Click to copy your result"></pre>
+      <p id="gameover-hint" class="gameover-hint">Tap the board to copy your result</p>
+
+      <div class="gameover-actions">
+        <button id="gameover-restart" class="modal-ok modal-ok-secondary" type="button">Restart today</button>
+        <button id="gameover-ok" class="modal-ok" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <p id="message" class="message">Drag a bank word onto the board. Drag the board to pan.</p>
 
   <main class="layout">
@@ -81,6 +107,9 @@
     <aside class="bank-wrap">
       <h2>Word Bank<span id="words" class="bank-count">0</span></h2>
       <div id="bank" class="bank"></div>
+      <!-- Hint helper: highlights a legal placement. Hidden for now, but fully
+           wired (showHint in main.js) — remove `hidden` to re-enable. -->
+      <button id="hint-btn" class="hint-btn" type="button" hidden>Hint</button>
     </aside>
   </main>
 

@@ -38,6 +38,7 @@ function makeRng(seedStr) {
 class Game {
   // `seed` defaults to today's date, so each day plays the same board.
   constructor(seed = Game.todaySeed()) {
+    this.seedStr = seed; // the seed string (a date by default), used in the share text
     this.rng = makeRng(seed);
     this.grid = new Grid();
     this.bank = []; // array of { id, word }
@@ -203,6 +204,33 @@ class Game {
       }
     }
     return false;
+  }
+
+  // Suggest a legal placement for the Hint button. Scans every bank word at every
+  // anchor / orientation / letter-alignment and returns the placement that crosses
+  // the most existing letters — a satisfying "aha" hint rather than an obscure
+  // abutment — as { id, word, row, col, orientation }, or null if nothing fits.
+  findHint() {
+    const anchors = this.candidateAnchors();
+    let best = null;
+    for (const item of this.bank) {
+      const word = item.word;
+      for (const { row: ar, col: ac } of anchors) {
+        for (const orientation of ['h', 'v']) {
+          for (let i = 0; i < word.length; i++) {
+            const row = orientation === 'v' ? ar - i : ar;
+            const col = orientation === 'h' ? ac - i : ac;
+            const res = window.validatePlacement(this.grid, word, row, col, orientation);
+            if (!res.valid) continue;
+            const crossings = res.crossings || 0;
+            if (!best || crossings > best.crossings) {
+              best = { id: item.id, word, row, col, orientation, crossings };
+            }
+          }
+        }
+      }
+    }
+    return best;
   }
 
   // Validate a candidate placement of any word against the current board (left

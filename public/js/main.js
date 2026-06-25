@@ -7,6 +7,18 @@ const scoreEl = document.getElementById('score');
 const wordsEl = document.getElementById('words');
 const messageEl = document.getElementById('message');
 
+// End-of-game dialog elements.
+const gameoverEl = document.getElementById('gameover');
+const gameoverTitleEl = document.getElementById('gameover-title');
+const gameoverSubEl = document.getElementById('gameover-sub');
+const gameoverScoreEl = document.getElementById('gameover-score');
+const gameoverBoardEl = document.getElementById('gameover-board');
+const gameoverHintEl = document.getElementById('gameover-hint');
+
+// The ASCII board snapshot shown in the game-over dialog, kept so the copied
+// result matches exactly what's displayed (the board can't change once over).
+let gameOverBoard = '';
+
 // Assigned once the vetted word lists have loaded (see bootstrap at the bottom).
 let game;
 let drag;
@@ -35,6 +47,8 @@ let viewCols = 0;
 let previewed = [];
 // Set once no remaining bank word fits anywhere — the bank is then struck through.
 let deadlocked = false;
+// Timer that clears the Hint highlight after a few seconds (null when inactive).
+let hintTimer = null;
 // Blue overlay marking the bounding box of all filled cells.
 let bboxEl = null;
 // Currently-displayed crossword number tags, keyed "row,col" → the <span>. Kept so
@@ -238,6 +252,7 @@ function ensureCoverage() {
 // Repaint after a placement, then top up coverage in case the new word reached
 // near the rendered edge.
 function refreshBoard() {
+  clearHint();
   paintAllCells();
   ensureCoverage();
 }
@@ -267,9 +282,9 @@ function refreshBoard() {
 // Cells keep their colors: 🟦 for the original seed word, 🟨 for gift/bonus words,
 // 🟩 where a seed and a gift word overlap, ⬛ for ordinary letters (crossings,
 // stubs, and pass-throughs alike), ⬜ for empty.
-function logBoardAscii() {
+function boardAscii() {
   const b = game.grid.bounds();
-  if (!b) return;
+  if (!b) return '';
   const get = (r, c) => game.grid.get(r, c);
   const seedKeys = new Set(game.seedCells.map((c) => `${c.row},${c.col}`));
   const bonusKeys = game.bonusCells; // Set of "row,col"
@@ -396,7 +411,13 @@ function logBoardAscii() {
     for (const C of colItems) line += glyph(R, C);
     out += line + '\n';
   }
-  console.log(out);
+  return out.replace(/\n$/, ''); // drop the trailing newline
+}
+
+// Print the schematic board to the console (debug view).
+function logBoardAscii() {
+  const ascii = boardAscii();
+  if (ascii) console.log(ascii);
 }
 
 // After a placement, check whether the puzzle has reached a dead end: the bank
@@ -408,6 +429,42 @@ function checkDeadlock() {
   deadlocked = true;
   for (const chip of bankEl.querySelectorAll('.chip')) chip.classList.add('dead');
   setMessage('No moves left — no remaining word fits anywhere on the board.', 'error');
+  setTimeout(() => openGameOver(false), 700);
+}
+
+// Remove any active Hint highlight and cancel its timer.
+function clearHint() {
+  if (hintTimer) { clearTimeout(hintTimer); hintTimer = null; }
+  for (const el of boardEl.querySelectorAll('.cell.hint')) el.classList.remove('hint');
+}
+
+// Hint button: find a legal placement for some bank word, scroll it into view,
+// and pulse the cells it would occupy. Times out after a few seconds.
+function showHint() {
+  if (!game || game.bank.length === 0 || deadlocked) return;
+  const hint = game.findHint();
+  if (!hint) { setMessage('No legal moves remain.', 'error'); return; }
+
+  const cells = game.grid.cellsFor(hint.word, hint.row, hint.col, hint.orientation);
+  // Center the rendered window on the suggested spot so every cell exists and is
+  // visible, then highlight (cellElAt reads the freshly rebuilt cell map).
+  let sumR = 0, sumC = 0;
+  for (const c of cells) { sumR += c.row; sumC += c.col; }
+  renderCenteredOn(sumR / cells.length + 0.5, sumC / cells.length + 0.5);
+
+  clearHint();
+  const flashed = [];
+  for (const { row, col } of cells) {
+    const el = cellElAt(row, col);
+    if (!el) continue;
+    el.classList.add('hint');
+    flashed.push(el);
+  }
+  setMessage(`Hint: “${hint.word.toUpperCase()}” fits where it's highlighted.`);
+  hintTimer = setTimeout(() => {
+    flashed.forEach((el) => el.classList.remove('hint'));
+    hintTimer = null;
+  }, 4000);
 }
 
 function renderChip(item) {
@@ -588,6 +645,83 @@ function cellTopLeft(row, col) {
   return { x: r.left, y: r.top };
 }
 
+// The daily seed formatted as a zero-padded YYYY-MM-DD date for sharing.
+function shareDate() {
+  const [y, m, d] = game.seedStr.split('-');
+  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// The shareable result: a header line with the day and score, then the mini board.
+function shareText() {
+  return `Crosshatch ${shareDate()}\nScore ${commafy(game.score)} · ${game.wordsPlaced} words\n\n${gameOverBoard}`;
+}
+
+// Copy the result to the clipboard (with a legacy fallback), flashing the hint.
+async function copyResult() {
+  const text = shareText();
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    gameoverHintEl.textContent = 'Copied to clipboard!';
+    gameoverHintEl.classList.add('copied');
+    setTimeout(() => {
+      gameoverHintEl.textContent = 'Tap the board to copy your result';
+      gameoverHintEl.classList.remove('copied');
+    }, 2000);
+  } catch {
+    gameoverHintEl.textContent = 'Copy failed — select and copy manually';
+  }
+}
+
+// Open the end-of-game dialog. `completed` is true when the puzzle was finished,
+// false when it ended in a dead end (no remaining word fits).
+function openGameOver(completed) {
+  gameOverBoard = boardAscii();
+  gameoverTitleEl.textContent = completed ? 'Puzzle complete!' : 'No moves left';
+  gameoverSubEl.textContent = completed
+    ? `You placed all ${game.wordsPlaced} words. Nicely done!`
+    : `You placed ${game.wordsPlaced} words before running out of moves.`;
+  gameoverScoreEl.textContent = commafy(game.score);
+  gameoverBoardEl.textContent = gameOverBoard;
+  gameoverHintEl.textContent = 'Tap the board to copy your result';
+  gameoverHintEl.classList.remove('copied');
+  gameoverEl.hidden = false;
+}
+
+function closeGameOver() {
+  gameoverEl.hidden = true;
+}
+
+// Wire the dialog's controls once at boot.
+function wireGameOver() {
+  gameoverBoardEl.addEventListener('click', copyResult);
+  gameoverBoardEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyResult(); }
+  });
+  document.getElementById('gameover-ok').addEventListener('click', closeGameOver);
+  document.getElementById('gameover-close').addEventListener('click', closeGameOver);
+  document.getElementById('gameover-restart').addEventListener('click', () => {
+    closeGameOver();
+    startGame();
+  });
+  gameoverEl.addEventListener('click', (e) => {
+    if (e.target === gameoverEl) closeGameOver(); // click the dim backdrop to dismiss
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !gameoverEl.hidden) closeGameOver();
+  });
+}
+
 // Hooks handed to the drag controller.
 const hooks = {
   resolve,
@@ -602,8 +736,11 @@ const hooks = {
       updateStats();
       logBoardAscii();
       celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
-      if (game.bank.length === 0) setMessage(`Daily puzzle complete — final score ${commafy(game.score)}.`);
-      else if (result.bonusAdded) setMessage('★ Bonus word! Place the yellow tile for big points.', 'bonus');
+      if (game.bank.length === 0) {
+        setMessage(`Daily puzzle complete — final score ${commafy(game.score)}.`);
+        // Let the final placement's celebration play before the dialog covers it.
+        setTimeout(() => openGameOver(true), 1100);
+      } else if (result.bonusAdded) setMessage('★ Bonus word! Place the yellow tile for big points.', 'bonus');
       else if (result.bonusForfeited) setMessage('Bonus word expired — you placed another word.');
       else setMessage('');
       checkDeadlock();
@@ -712,7 +849,27 @@ function initBoardPointer(wrap) {
   });
 }
 
-// Bootstrap: load the vetted word lists, then start the game and render.
+// Start (or restart) the current day's game: fresh board, bank, and score, then
+// render centered on the seed word. Safe to call repeatedly (the Restart button).
+function startGame() {
+  game = new Game();
+  deadlocked = false;
+  seenBankIds.clear();
+  lastOrientation = 'h';
+  clearPreview();
+  renderBank();
+  updateStats();
+  setMessage('');
+
+  // Render once layout is known, centered on the seed word, filling the viewport.
+  requestAnimationFrame(() => {
+    const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
+    renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
+    checkDeadlock();
+  });
+}
+
+// Bootstrap: load the vetted word lists, wire one-time handlers, then start.
 async function boot() {
   setMessage('Loading word list…');
   try {
@@ -722,20 +879,11 @@ async function boot() {
     throw e;
   }
 
-  game = new Game();
-  renderBank();
-  updateStats();
-  setMessage('');
-
   const wrap = document.querySelector('.board-wrap');
   initBoardPointer(wrap);
-
-  // Render once layout is known, centered on the seed word, filling the viewport.
-  requestAnimationFrame(() => {
-    const b = game.grid.bounds() || { minR: 0, maxR: 0, minC: 0, maxC: 0 };
-    renderCenteredOn((b.minR + b.maxR) / 2 + 0.5, (b.minC + b.maxC) / 2 + 0.5);
-    checkDeadlock();
-  });
+  wireGameOver();
+  document.getElementById('hint-btn').addEventListener('click', showHint);
+  startGame();
 }
 
 boot();
