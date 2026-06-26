@@ -200,9 +200,9 @@ body {
   color: var(--on-accent);
 }
 .restart-btn[hidden] { display: none; }
-/* The ↻ glyph sits a hair right of center in the circle; nudge it 2px left so it
-   reads as centered. inline-block so the transform applies to the character. */
-.restart-glyph { display: inline-block; transform: translateX(-2px); }
+/* The ↻ glyph sits a hair right of and below center in the circle; nudge it 3px
+   left and 1px up so it reads as centered. inline-block so the transform applies. */
+.restart-glyph { display: inline-block; transform: translate(-3px, -1px); }
 
 /* Dimmed full-screen backdrop behind the how-to card. */
 .modal-backdrop {
