@@ -31,10 +31,19 @@ let lastOrientation = 'h';
 // a buffer of extra cells on every side, and re-render (recentered) as the user
 // pans so an edge is never reached — the grid appears endless. VIEW_BUFFER must
 // exceed the longest word so a word dropped in view is always fully rendered.
-const PITCH = window.CELL + 1; // cell size + 1px grid gap
+const BASE_CELL = window.CELL;  // unzoomed cell size (matches --cell's CSS default)
+let PITCH = window.CELL + 1;    // cell size + 1px grid gap; tracks the current zoom
 const VIEW_BUFFER = 12;        // extra cells rendered beyond the viewport per side
 const RECENTER_AT = 6;         // re-render when fewer than this many buffer cells remain
 const ENABLE_WORD_MOVE = false; // temporarily disabled: dragging a placed word to move it
+
+// Pinch-to-zoom (touch). 1.0 is the default, most-zoomed-in view; pinching out shrinks
+// the cells to MIN_ZOOM (40% smaller) so more of the board shows at once, then pinching
+// in returns to 1.0. Zoom changes the real cell size and re-renders, so all the existing
+// PITCH-based coordinate math stays consistent — there's no separate CSS transform layer.
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 1;
+let zoomScale = 1;
 
 // cellEls maps "row,col" (absolute, may be negative) → the cell <div>.
 let cellEls = new Map();
@@ -260,6 +269,26 @@ function viewCenterWorld() {
   return {
     row: viewR0 + (wrap.scrollTop + wrap.clientHeight / 2) / PITCH,
     col: viewC0 + (wrap.scrollLeft + wrap.clientWidth / 2) / PITCH,
+  };
+}
+
+// Set the on-screen cell size (px) for the current zoom and keep the JS pitch and the
+// drag controller's CELL in lockstep. Callers re-render afterward so the grid rebuilds
+// at the new size.
+function setCellSize(px) {
+  window.CELL = px; // drag.js reads this live for ghost snapping
+  PITCH = px + 1;
+  document.documentElement.style.setProperty('--cell', `${px}px`);
+}
+
+// The world (row, col) point currently under a viewport pixel — the inverse of the
+// PITCH-based layout. Fractional, so a zoom can re-anchor it precisely under a finger.
+function clientToWorld(clientX, clientY) {
+  const wrap = document.querySelector('.board-wrap');
+  const rect = wrap.getBoundingClientRect();
+  return {
+    row: viewR0 + (clientY - rect.top + wrap.scrollTop) / PITCH,
+    col: viewC0 + (clientX - rect.left + wrap.scrollLeft) / PITCH,
   };
 }
 
@@ -853,9 +882,11 @@ function startWordMove(downEvt, cellEl, axis) {
 }
 
 // One pointer handler for the board: drag a filled cell to move that word, drag
-// empty space to pan. Panning is incremental so a mid-pan re-render never jumps.
+// empty space to pan, and pinch with two fingers to zoom. Panning is incremental so
+// a mid-pan re-render never jumps.
 function initBoardPointer(wrap) {
   let lastX = 0, lastY = 0;
+  let panning = false;
 
   // Pan via window listeners (no pointer capture, so click events still fire).
   const panMove = (e) => {
@@ -864,13 +895,80 @@ function initBoardPointer(wrap) {
     lastX = e.clientX; lastY = e.clientY;
   };
   const panEnd = () => {
+    panning = false;
     wrap.classList.remove('panning');
     window.removeEventListener('pointermove', panMove);
     window.removeEventListener('pointerup', panEnd);
     window.removeEventListener('pointercancel', panEnd);
   };
 
+  // --- Pinch-to-zoom (two touch fingers) ---
+  const touches = new Map(); // active touch pointers: id -> { x, y }
+  let pinch = null;          // { startDist, startScale, focus } while two fingers are down
+  let pinchPending = false;  // rAF throttle so the board re-renders at most once per frame
+
+  const twoPoints = () => [...touches.values()];
+  const pinchDist = () => { const [a, b] = twoPoints(); return Math.hypot(a.x - b.x, a.y - b.y); };
+  const pinchMid = () => { const [a, b] = twoPoints(); return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; };
+
+  function beginPinch() {
+    if (panning) panEnd();  // a one-finger pan was underway; hand the gesture to the pinch
+    hasInteracted = true;   // stop auto-recentering on resize
+    const m = pinchMid();
+    pinch = {
+      startDist: pinchDist() || 1,
+      startScale: zoomScale,
+      focus: clientToWorld(m.x, m.y), // world point under the pinch center, held fixed
+    };
+  }
+
+  // Recompute the zoom from the current finger spread, re-render the board at the new
+  // cell size, then scroll so the held focus point sits back under the live finger
+  // midpoint — so the board appears to zoom around the pinch center.
+  function applyPinch() {
+    pinchPending = false;
+    if (!pinch || touches.size < 2) return;
+    const m = pinchMid();
+    const scale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinch.startScale * (pinchDist() / pinch.startDist)));
+    zoomScale = scale;
+    const px = Math.round(BASE_CELL * scale);
+    if (px !== window.CELL) setCellSize(px);
+
+    const vc = viewportCells();
+    const cols = vc.cols + 2 * VIEW_BUFFER;
+    const rows = vc.rows + 2 * VIEW_BUFFER;
+    renderWindow(Math.round(pinch.focus.row) - Math.floor(rows / 2),
+                 Math.round(pinch.focus.col) - Math.floor(cols / 2), rows, cols);
+    const rect = wrap.getBoundingClientRect();
+    wrap.scrollLeft = (pinch.focus.col - viewC0) * PITCH - (m.x - rect.left);
+    wrap.scrollTop = (pinch.focus.row - viewR0) * PITCH - (m.y - rect.top);
+  }
+
+  const pinchMove = (e) => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && !pinchPending) {
+      pinchPending = true;
+      requestAnimationFrame(applyPinch);
+    }
+  };
+  const pinchDrop = (e) => {
+    if (!touches.delete(e.pointerId)) return;
+    if (pinch && touches.size < 2) {
+      pinch = null;
+      ensureCoverage(); // top up the rendered window now that the zoom has settled
+    }
+  };
+  window.addEventListener('pointermove', pinchMove);
+  window.addEventListener('pointerup', pinchDrop);
+  window.addEventListener('pointercancel', pinchDrop);
+
   wrap.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) { beginPinch(); return; } // second finger → start pinching
+      if (touches.size > 2) return;
+    }
     if (e.button !== 0) return;
     const cellEl = e.target.closest('.cell');
     if (ENABLE_WORD_MOVE && cellEl && cellEl.classList.contains('filled')) {
@@ -895,16 +993,18 @@ function initBoardPointer(wrap) {
     // Empty space → pan.
     hasInteracted = true; // stop auto-recentering once the player moves the board
     lastX = e.clientX; lastY = e.clientY;
+    panning = true;
     wrap.classList.add('panning');
     window.addEventListener('pointermove', panMove);
     window.addEventListener('pointerup', panEnd);
     window.addEventListener('pointercancel', panEnd);
   });
 
-  // Top up coverage as the view scrolls/pans (throttled to one check per frame).
+  // Top up coverage as the view scrolls/pans (throttled to one check per frame). A
+  // pinch drives its own re-render and anchors the focus by hand, so skip it then.
   let pending = false;
   wrap.addEventListener('scroll', () => {
-    if (pending) return;
+    if (pinch || pending) return;
     pending = true;
     requestAnimationFrame(() => {
       pending = false;
@@ -920,6 +1020,8 @@ function initBoardPointer(wrap) {
 function startGame(saved = null) {
   game = new Game(undefined, saved);
   deadlocked = false;
+  zoomScale = 1;             // a fresh/restarted game starts at the default zoom
+  setCellSize(BASE_CELL);
   hasInteracted = false; // a fresh game re-centers on resize until the player acts
   seenBankIds.clear();
   lastOrientation = 'h';

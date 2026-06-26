@@ -674,27 +674,41 @@ kbd {
 .ghost.valid { border-color: var(--success); }
 
 /* --- Mobile / narrow screens --- Stack the word bank under the board (instead of
-   beside it), lay its chips out in two columns, and shrink type to fit. The grid
-   cell size stays 32px on purpose: the drag-snap and render math use a matching JS
-   constant (CELL in drag.js, PITCH in main.js), so this block is layout-only. The
-   board stays pannable, so a fixed cell size is fine on small screens. */
+   beside it), lay its chips out in two columns, and shrink type to fit. The grid's
+   resting cell size stays 32px here; pinch-to-zoom (main.js) shrinks --cell at run
+   time and keeps the drag-snap/render math in sync (window.CELL, PITCH), so this
+   block stays layout-only. The board is pannable, so the resting size is fine. */
 @media (max-width: 720px) {
-  .topbar { padding: 10px 14px; }
-  .topbar h1 { font-size: 21px; letter-spacing: 0.5px; }
-  .tagline { font-size: 11px; }
+  .topbar { padding: 6px 14px; border-bottom-width: 2px; }
+  .topbar h1 { font-size: 19px; letter-spacing: 0.5px; }
+  .tagline { display: none; } /* hide the subtitle on mobile to reclaim header space */
   .topbar-tools { gap: 6px; }
   .help-btn { width: 30px; height: 30px; font-size: 16px; }
 
   .message { margin: 8px 14px 0; }
 
+  /* Make the page a fixed full-height column so the board absorbs every spare pixel:
+     the header and message take their natural height and the board-frame flexes to
+     fill whatever's left above the (capped) word bank — maximizing the play area.
+     The height must be DEFINITE (not min-height) and overflow hidden, so the flex
+     children are bounded by the viewport instead of the board's tall rendered grid
+     forcing the page to grow and pushing the bank off-screen. */
+  body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+
   /* Board on top, bank hugging the bottom. */
   .layout {
+    flex: 1 1 auto;
+    min-height: 0; /* let the board-frame actually grow/shrink within the column */
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
     padding: 10px 12px 14px;
   }
-  .board-frame { height: 52dvh; } /* overrides the desktop calc() height */
+  .board-frame {
+    height: auto;   /* overrides the desktop calc() height */
+    flex: 1 1 auto; /* fill the vertical space the header no longer uses */
+    min-height: 0;
+  }
 
   .bank-wrap {
     flex: 0 0 auto;

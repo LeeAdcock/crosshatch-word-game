@@ -100,6 +100,7 @@ class DragController {
   moveGhost(x, y) {
     const a = this.active;
     if (!a.ghost) return;
+    const CELL = window.CELL; // live cell size (changes with pinch zoom)
     if (a.orientation === 'v') {
       a.ghost.style.left = `${x - CELL / 2}px`;
       a.ghost.style.top = `${y - (a.grabIndex * (CELL + 1) + CELL / 2)}px`;
