@@ -85,10 +85,13 @@ separate, smaller list of common words.
   refills the slot whose length is furthest below its target, keeping a spread of
   lengths. A game deals at most `MAX_WORDS`.
 - **Density scoring:** `computeScore` rewards packing high-value (Scrabble) letters
-  tightly — `boardLetterSum / boundingArea`, scaled by words placed, plus combo
-  bonuses for forming multiple words in one placement (`comboBonus`). `formedWords`
-  distinguishes words a placement *creates/extends* (has a new tile) from words it
-  merely crosses (no new tile).
+  tightly — `boardLetterSum / boundingArea`, scaled by words placed, plus a running
+  `bonus`. Each placement adds to `bonus` a count-based combo reward for forming
+  multiple words at once (`comboBonus`) **plus the Scrabble letter value of the extra
+  perpendicular cross words it generates** (the word along the placement's own axis is
+  the one you placed, so it isn't counted as a cross word). `formedWords` distinguishes
+  words a placement *creates/extends* (has a new tile) from words it merely crosses
+  (no new tile).
 - **Gift/bonus words (`bonus.js`):** `deriveBonusWord(grid, used)` searches the
   *current board* for the best-fitting unused dictionary word (most connections, then
   Scrabble value) and is offered as an amber bank tile. `BONUS_EVERY = 5` triggers an

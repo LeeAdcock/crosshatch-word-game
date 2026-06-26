@@ -395,7 +395,22 @@ class Game {
     // Count the words this placement formed; reward forming several at once.
     const formed = this.grid.formedWords(placedCells, newlyFilled);
     const comboBonus = Game.comboBonus(formed.length);
-    this.bonus += comboBonus;
+
+    // On top of the count-based combo bonus, award the Scrabble letter value of the
+    // additional words this placement generated — the perpendicular cross words. Each
+    // runs through one newly-filled cell, perpendicular to the placement (the word
+    // along the placement's own axis is the one you placed, not an "extra"), so they
+    // sit on distinct lines and never double-count.
+    const perpRun = orientation === 'h'
+      ? (r, c) => this.grid.verticalRun(r, c)
+      : (r, c) => this.grid.horizontalRun(r, c);
+    let crossWordValue = 0;
+    for (const { row: r, col: c } of newlyFilled) {
+      const run = perpRun(r, c);
+      if (run.length >= 2) crossWordValue += window.wordScore(run);
+    }
+
+    this.bonus += comboBonus + crossWordValue;
     this.wordsPlaced++;
     this.score = this.computeScore();
 
@@ -424,7 +439,7 @@ class Game {
       gained: this.score - before,
       score: this.score,
       cells: placedCells,
-      combo: formed.length >= 2 ? { count: formed.length, bonus: comboBonus } : null,
+      combo: formed.length >= 2 ? { count: formed.length, bonus: comboBonus + crossWordValue } : null,
       placedBonus: wasBonus, // this placement was a bonus word (flash its connections yellow)
       bonusAdded,            // this placement earned a NEW bonus word
       bonusForfeited,        // this placement removed an unused bonus word
