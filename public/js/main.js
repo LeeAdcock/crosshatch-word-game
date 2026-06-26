@@ -13,6 +13,7 @@ const gameoverEl = document.getElementById('gameover');
 const gameoverTitleEl = document.getElementById('gameover-title');
 const gameoverSubEl = document.getElementById('gameover-sub');
 const gameoverScoreEl = document.getElementById('gameover-score');
+const gameoverBestEl = document.getElementById('gameover-best');
 const gameoverBoardEl = document.getElementById('gameover-board');
 const gameoverHintEl = document.getElementById('gameover-hint');
 
@@ -57,6 +58,9 @@ let viewCols = 0;
 let previewed = [];
 // Set once no remaining bank word fits anywhere — the bank is then struck through.
 let deadlocked = false;
+// Today's stored best score captured at the start of the current attempt, so the
+// end-of-game dialog can tell whether this run set a new personal best for the day.
+let preGameBest = null;
 // Timer that clears the Hint highlight after a few seconds (null when inactive).
 let hintTimer = null;
 // Becomes true once the player pans or starts a drag. Until then, a window resize
@@ -106,6 +110,45 @@ function loadGame() {
     return null;
   }
   return saved;
+}
+
+// localStorage key for the per-day best-score history: a map of seed (date) string →
+// { best, words }. Kept separate from the in-progress board so it survives a fresh
+// game / restart and accumulates across days — the basis for a future history view.
+const HISTORY_KEY = 'crosshatch_history';
+
+// The whole history map, or {} if absent/unreadable.
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// Today's history record ({ best, words }), or null if none yet.
+function bestForToday() {
+  return loadHistory()[Game.todaySeed()] || null;
+}
+
+// Record the current score as today's best if it beats the stored best (the score
+// peaks at the end of a run, and Restart replays the same daily seed, so this keeps
+// the high score across attempts). Keyed by the day's seed. Returns
+// { record, isNewBest } — isNewBest true when this call raised the stored best.
+function recordBestScore() {
+  if (!game) return { record: null, isNewBest: false };
+  const history = loadHistory();
+  const key = game.seedStr;
+  const prev = history[key];
+  const score = Math.round(game.score);
+  const isNewBest = !prev || score > prev.best;
+  if (isNewBest) {
+    history[key] = { best: score, words: game.wordsPlaced };
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+  }
+  return { record: history[key], isNewBest };
 }
 
 // Crossword numbering: a filled cell is numbered when it begins an across word
@@ -774,6 +817,22 @@ function openGameOver(completed) {
     ? `You placed all ${game.wordsPlaced} words. Nicely done!`
     : `You placed ${game.wordsPlaced} words before running out of moves.`;
   gameoverScoreEl.textContent = commafy(game.score);
+
+  // Log this run's score and tell the player whether it raised today's best (Restart
+  // replays the same daily seed, so this is the "beat your score" payoff).
+  recordBestScore();
+  const today = bestForToday();
+  const isNewBest = !preGameBest || (today && today.best > preGameBest.best);
+  if (isNewBest) {
+    gameoverBestEl.textContent = '★ New best score for today!';
+    gameoverBestEl.classList.add('newbest');
+  } else if (today) {
+    gameoverBestEl.textContent = `Today's best: ${commafy(today.best)}`;
+    gameoverBestEl.classList.remove('newbest');
+  } else {
+    gameoverBestEl.textContent = '';
+  }
+
   gameoverBoardEl.textContent = gameOverBoard;
   gameoverHintEl.textContent = 'Tap the board to copy your result';
   gameoverHintEl.classList.remove('copied');
@@ -835,6 +894,7 @@ const hooks = {
       renderBank();
       updateStats();
       saveGame(); // persist the board after every successful placement
+      recordBestScore(); // keep today's stored best up to the running peak
       logBoardAscii();
       celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
       if (game.bank.length === 0) {
@@ -1031,6 +1091,7 @@ function initBoardPointer(wrap) {
 function startGame(saved = null) {
   game = new Game(undefined, saved);
   deadlocked = false;
+  preGameBest = bestForToday(); // remember the day's best before this attempt scores
   zoomScale = 1;             // a fresh/restarted game starts at the default zoom
   setCellSize(BASE_CELL);
   hasInteracted = false; // a fresh game re-centers on resize until the player acts
