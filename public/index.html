@@ -30,6 +30,9 @@
       <p class="tagline">The daily uncrossword game</p>
     </div>
     <div class="topbar-tools">
+      <!-- Shown only once the game has ended (all words placed, or no legal move
+           remains). main.js toggles `hidden` via updateRestartButton(). -->
+      <button id="restart-btn" class="help-btn restart-btn" type="button" aria-label="Restart today's puzzle" title="Restart today's puzzle" hidden><span class="restart-glyph">↻</span></button>
       <button id="theme-btn" class="help-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">☾</button>
       <button id="help-btn" class="help-btn" type="button" aria-label="How to play" title="How to play">?</button>
     </div>

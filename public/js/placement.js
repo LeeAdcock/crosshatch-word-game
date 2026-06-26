@@ -24,14 +24,30 @@ function validatePlacement(grid, word, row, col, orientation, firstMove = false)
 
   // 2. Overlap-match: a covered cell must be empty or already hold this letter.
   //    Count overlaps so we can (a) require connection and (b) score crossings.
+  //
+  //    A placement may share at most ONE letter with any single existing word: it can
+  //    cross several different words (one shared letter each), but it can't lie on top
+  //    of a parallel word (e.g. ICECREAM dropped onto CREAM). Sharing 2+ letters with
+  //    one word can only happen by parallel overlap, which always shows up as two
+  //    reused cells that are consecutive along this placement's axis — a perpendicular
+  //    crossing can only ever touch the line at a single cell. So reject consecutive
+  //    overlaps; non-adjacent overlaps (genuine separate crossings) stay legal.
   let overlaps = 0;
+  let prevOverlap = false;
   for (const { row: r, col: c, letter } of cells) {
     const existing = grid.get(r, c);
-    if (existing === null) continue;
+    if (existing === null) {
+      prevOverlap = false;
+      continue;
+    }
     if (existing !== letter) {
       return { valid: false, reason: 'Letters do not match' };
     }
+    if (prevOverlap) {
+      return { valid: false, reason: 'Words may overlap by only one letter' };
+    }
     overlaps++;
+    prevOverlap = true;
   }
 
   // 3. Must connect to existing structure (unless this is the first move) —

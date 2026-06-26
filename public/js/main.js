@@ -6,6 +6,7 @@ const bankEl = document.getElementById('bank');
 const scoreEl = document.getElementById('score');
 const wordsEl = document.getElementById('words');
 const messageEl = document.getElementById('message');
+const restartBtn = document.getElementById('restart-btn');
 
 // End-of-game dialog elements.
 const gameoverEl = document.getElementById('gameover');
@@ -494,12 +495,21 @@ function logBoardAscii() {
 // After a placement, check whether the puzzle has reached a dead end: the bank
 // still holds words but none can be legally placed anywhere. If so, strike the
 // remaining words through in red — they can no longer be played.
+// Show the header Restart button once the game has ended — either the bank is empty
+// (all words placed) or it's deadlocked (only unplaceable words remain) — and hide it
+// otherwise. Idempotent, so it's safe to call after any state change.
+function updateRestartButton() {
+  const ended = !!game && (game.bank.length === 0 || deadlocked);
+  restartBtn.hidden = !ended;
+}
+
 function checkDeadlock() {
   if (deadlocked || game.bank.length === 0) return; // empty bank = complete, not stuck
   if (game.anyPlaceable()) return;
   deadlocked = true;
   for (const chip of bankEl.querySelectorAll('.chip')) chip.classList.add('dead');
   setMessage('No moves left — no remaining word fits anywhere on the board.', 'error');
+  updateRestartButton();
   setTimeout(() => openGameOver(false), 700);
 }
 
@@ -835,6 +845,7 @@ const hooks = {
       else if (result.bonusForfeited) setMessage('Bonus word expired — you placed another word.');
       else setMessage('');
       checkDeadlock();
+      updateRestartButton();
     } else {
       setMessage(result.reason || 'Invalid placement', 'error');
     }
@@ -1029,12 +1040,14 @@ function startGame(saved = null) {
   renderBank();
   updateStats();
   setMessage('');
+  updateRestartButton(); // hidden for a fresh game; shown if a restored board is already complete
   saveGame(); // persist the starting (or restored) board immediately
 
   // Render once layout is known, centered on the seed word, filling the viewport.
   requestAnimationFrame(() => {
     centerOnSeed();
     checkDeadlock();
+    updateRestartButton(); // checkDeadlock may have just flagged a restored dead end
   });
 }
 
@@ -1060,6 +1073,8 @@ async function boot() {
   initBoardPointer(wrap);
   wireGameOver();
   document.getElementById('hint-btn').addEventListener('click', showHint);
+  // Header Restart button (visible only after the game ends): replay today's seed.
+  restartBtn.addEventListener('click', () => { closeGameOver(); startGame(); });
 
   // Keep the anchor word centered across window-size changes until the player acts
   // (orientation flips, mobile URL-bar collapse, desktop window resize). Re-rendered

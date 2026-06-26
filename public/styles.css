@@ -185,6 +185,25 @@ body {
 }
 .help-btn:hover { background: var(--ink); color: var(--paper); }
 
+/* Restart button (header): shown only when the game has ended. Styled in the accent
+   color so it reads as the call-to-action to play again, set apart from the plain
+   round ?/theme buttons. The ↻ glyph is bumped up a touch to fill the circle. */
+.restart-btn {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  font-size: 20px;
+}
+.restart-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+}
+.restart-btn[hidden] { display: none; }
+/* The ↻ glyph sits a hair right of center in the circle; nudge it 2px left so it
+   reads as centered. inline-block so the transform applies to the character. */
+.restart-glyph { display: inline-block; transform: translateX(-2px); }
+
 /* Dimmed full-screen backdrop behind the how-to card. */
 .modal-backdrop {
   position: fixed;
