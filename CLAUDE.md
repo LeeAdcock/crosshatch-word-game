@@ -143,10 +143,15 @@ currently-disabled feature of dragging an already-placed word.
 
 - **How-to dialog (`instructions.js`):** shown on first visit, gated by a
   `crosshatch_howto_seen` cookie; reopenable via the header **?** button.
-- **End-of-game dialog (`main.js`):** opens on completion or a dead end. Reuses
-  `boardAscii()` (the emoji schematic also logged to the console) for a shareable
-  result; clicking the board copies it. `startGame()` (extracted so "Restart" can
-  replay the same daily seed) resets per-game state and re-renders.
+- **End-of-game dialog (`main.js`):** opens on completion or a dead end.
+  `boardMatrix()` collapses the board into a 2D array of cell types
+  (`seed`/`bonus`/`both`/`plain`/`empty`); `renderResultImage()` draws that — plus
+  the title, date, and score — onto the dialog's `<canvas>` as a self-contained,
+  theme-colored result graphic. Clicking it copies the canvas as an `image/png` (with
+  a text/plain fallback) via the async Clipboard API, so it pastes straight into a
+  message or post; only the headline text is offered when image copy is unsupported.
+  `startGame()` (extracted so "Restart" can replay the same daily seed) resets
+  per-game state and re-renders.
 - **Theming (`theme.js` + inline `<head>` bootstrap):** every color in `styles.css`
   resolves through a CSS variable; the light palette is the `:root` default and dark
   overrides live under `[data-theme="dark"]`. The inline bootstrap sets `data-theme`

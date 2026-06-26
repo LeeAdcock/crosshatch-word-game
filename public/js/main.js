@@ -21,10 +21,6 @@ const gameoverBestEl = document.getElementById('gameover-best');
 const gameoverBoardEl = document.getElementById('gameover-board');
 const gameoverHintEl = document.getElementById('gameover-hint');
 
-// The ASCII board snapshot shown in the game-over dialog, kept so the copied
-// result matches exactly what's displayed (the board can't change once over).
-let gameOverBoard = '';
-
 // Assigned once the vetted word lists have loaded (see bootstrap at the bottom).
 let game;
 let drag;
@@ -398,10 +394,11 @@ function refreshBoard() {
 // continuing between the two separate words that cross it) stays filled in its own
 // column while the words beside it read as empty, keeping everything separated.
 //
-// Cells keep their colors: 🟦 for the original seed word, 🟨 for gift/bonus words,
-// 🟩 where a seed and a gift word overlap, ⬛ for ordinary letters (crossings,
-// stubs, and pass-throughs alike), ⬜ for empty.
-function boardAscii() {
+// Cells keep their colors: 'seed' for the original seed word, 'bonus' for gift/bonus
+// words, 'both' where a seed and a gift word overlap, 'plain' for ordinary letters
+// (crossings, stubs, and pass-throughs alike), 'empty' for empty. The result is a 2D
+// array of these type strings (rows × cols), rendered to the shareable result image.
+function boardMatrix() {
   const b = game.grid.bounds();
   if (!b) return '';
   const get = (r, c) => game.grid.get(r, c);
@@ -506,7 +503,7 @@ function boardAscii() {
   // pick a color by priority (seed+bonus overlap > seed > bonus > ordinary), or
   // empty if none is filled. A block holding both a seed and a gift cell — where
   // the original word and a gift word cross — reads green.
-  const glyph = (R, C) => {
+  const typeOf = (R, C) => {
     const [r0, r1] = range(R), [c0, c1] = range(C);
     let seed = false, bonus = false, plain = false;
     for (let r = r0; r <= r1; r++) {
@@ -521,22 +518,89 @@ function boardAscii() {
         if (!isSeed && !isBonus) plain = true;
       }
     }
-    return seed && bonus ? '🟩' : seed ? '🟦' : bonus ? '🟨' : plain ? '⬛' : '⬜';
+    return seed && bonus ? 'both' : seed ? 'seed' : bonus ? 'bonus' : plain ? 'plain' : 'empty';
   };
 
-  let out = '';
-  for (const R of rowItems) {
-    let line = '';
-    for (const C of colItems) line += glyph(R, C);
-    out += line + '\n';
-  }
-  return out.replace(/\n$/, ''); // drop the trailing newline
+  return rowItems.map((R) => colItems.map((C) => typeOf(R, C)));
 }
 
-// Print the schematic board to the console (debug view).
-function logBoardAscii() {
-  const ascii = boardAscii();
-  if (ascii) console.log(ascii);
+// Draw the result onto `canvas`, sized to fit its contents, colored from the live
+// theme so it matches whichever mode the player is in. With `includeHeader`, the
+// title/date/score are drawn above the board, making a self-contained image to copy
+// and paste into a message or post; without it, just the board (the dialog already
+// shows the name and score, so the on-screen copy stays board-only).
+function renderResultImage(canvas, includeHeader) {
+  const matrix = boardMatrix();
+  const rows = matrix.length;
+  const cols = rows ? matrix[0].length : 0;
+
+  const CELL = 30, GAP = 4, PAD = 36, RADIUS = 6;
+  const HEADER = includeHeader ? 104 : 0;
+  const boardW = cols ? cols * (CELL + GAP) - GAP : 0;
+  const boardH = rows ? rows * (CELL + GAP) - GAP : 0;
+  const W = Math.max(boardW, includeHeader ? 300 : 0) + PAD * 2;
+  const H = HEADER + boardH + PAD * 2;
+
+  const css = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => (css.getPropertyValue(name).trim() || fallback);
+  const COLOR = {
+    seed: v('--accent', '#1e6fff'), bonus: v('--bonus', '#f4c20d'),
+    both: v('--success', '#2e7d32'), plain: v('--ink', '#111'), empty: v('--empty', '#e6e6e6'),
+  };
+  const paper = v('--paper', '#fff'), ink = v('--ink', '#111'), rule = v('--rule', '#ddd');
+  const FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  // Display at the logical size; CSS (max-width:100%, height:auto) scales it down to
+  // fit narrow modals while preserving the aspect ratio. The copied PNG stays full-res.
+  canvas.style.width = `${W}px`;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Card background + hairline border so the image reads on any chat backdrop.
+  ctx.fillStyle = paper;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = rule;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+  // Header text (copy version only), centered.
+  if (includeHeader) {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = ink;
+    ctx.font = `800 32px ${FONT}`;
+    ctx.fillText('Crosshatch', W / 2, PAD + 30);
+    ctx.fillStyle = COLOR.seed;
+    ctx.font = `700 22px ${FONT}`;
+    ctx.fillText(`${commafy(game.score)} points`, W / 2, PAD + 62);
+    ctx.fillStyle = ink;
+    ctx.font = `500 16px ${FONT}`;
+    ctx.fillText(`${shareDate()} · ${game.wordsPlaced} words`, W / 2, PAD + 88);
+  }
+
+  // Board: a rounded tile per cell, colored by type.
+  const bx = (W - boardW) / 2, by = PAD + HEADER;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = bx + c * (CELL + GAP), y = by + r * (CELL + GAP);
+      ctx.fillStyle = COLOR[matrix[r][c]] || COLOR.empty;
+      roundRect(ctx, x, y, CELL, CELL, RADIUS);
+      ctx.fill();
+    }
+  }
+}
+
+// Path a rounded rectangle (canvas has no built-in across all targets we support).
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 // After a placement, check whether the puzzle has reached a dead end: the bank
@@ -780,42 +844,54 @@ function shareDate() {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-// The shareable result: a header line with the day and score, then the mini board.
+// Plain-text fallback for clipboard targets that can't take an image (e.g. a bare
+// text field). The board itself lives in the image, so this is just the headline.
 function shareText() {
-  return `Crosshatch ${shareDate()}\nScore ${commafy(game.score)} · ${game.wordsPlaced} words\n\n${gameOverBoard}`;
+  return `Crosshatch ${shareDate()} — ${commafy(game.score)} points · ${game.wordsPlaced} words\nhttps://crosshatch-word-game.lee-06e.workers.dev/`;
 }
 
-// Copy the result to the clipboard (with a legacy fallback), flashing the hint.
+// Briefly show a status under the result image, then revert to the prompt.
+function flashHint(message) {
+  gameoverHintEl.textContent = message;
+  gameoverHintEl.classList.add('copied');
+  setTimeout(() => {
+    gameoverHintEl.textContent = 'Tap the board to copy it as an image';
+    gameoverHintEl.classList.remove('copied');
+  }, 2200);
+}
+
+// Copy the result image to the clipboard so it can be pasted into a message or post.
+// Writes an image/png (plus a text/plain fallback) via the async Clipboard API; if
+// that's unavailable, falls back to copying the headline text.
 async function copyResult() {
-  const text = shareText();
+  // Copy the full-detail version (title/date/score + board) rendered offscreen, so the
+  // shared image is self-contained even though the dialog only shows the board.
+  const canvas = document.createElement('canvas');
+  renderResultImage(canvas, true);
   try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      // Build the PNG inside the ClipboardItem promise so Safari keeps the user
+      // gesture; pair it with text so plain-text targets still get something.
+      const item = new ClipboardItem({
+        'image/png': new Promise((resolve) => canvas.toBlob(resolve, 'image/png')),
+        'text/plain': new Blob([shareText()], { type: 'text/plain' }),
+      });
+      await navigator.clipboard.write([item]);
+      flashHint('Copied! Paste it into a message or post.');
+    } else if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(shareText());
+      flashHint('Copied result text (image copy not supported here).');
     } else {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      ta.remove();
+      throw new Error('clipboard unavailable');
     }
-    gameoverHintEl.textContent = 'Copied to clipboard!';
-    gameoverHintEl.classList.add('copied');
-    setTimeout(() => {
-      gameoverHintEl.textContent = 'Tap the board to copy your result';
-      gameoverHintEl.classList.remove('copied');
-    }, 2000);
   } catch {
-    gameoverHintEl.textContent = 'Copy failed — select and copy manually';
+    gameoverHintEl.textContent = 'Copy failed — long-press the image to save or copy it';
   }
 }
 
 // Open the end-of-game dialog. `completed` is true when the puzzle was finished,
 // false when it ended in a dead end (no remaining word fits).
 function openGameOver(completed) {
-  gameOverBoard = boardAscii();
   gameoverTitleEl.textContent = completed ? 'Puzzle complete!' : 'No moves left';
   gameoverSubEl.textContent = completed
     ? `You placed all ${game.wordsPlaced} words. Nicely done!`
@@ -837,28 +913,10 @@ function openGameOver(completed) {
     gameoverBestEl.textContent = '';
   }
 
-  gameoverBoardEl.textContent = gameOverBoard;
-  gameoverHintEl.textContent = 'Tap the board to copy your result';
+  renderResultImage(gameoverBoardEl, false); // on-screen: board only (header would duplicate the dialog)
+  gameoverHintEl.textContent = 'Tap the board to copy it as an image';
   gameoverHintEl.classList.remove('copied');
   gameoverEl.hidden = false;
-  fitGameOverBoard(); // must run after it's visible so widths can be measured
-}
-
-// Shrink the ASCII board's font so a wide board fits the dialog instead of being
-// clipped. Compares the board's natural width to the modal's inner width and scales
-// the font-size down proportionally (emoji scale with font-size, so columns stay
-// aligned). Capped at the CSS base size for small boards.
-function fitGameOverBoard() {
-  const el = gameoverBoardEl;
-  el.style.fontSize = ''; // reset to the CSS base before measuring
-  const modal = el.closest('.modal');
-  if (!modal) return;
-  const avail = modal.clientWidth - 64; // minus the modal's horizontal padding (32+32)
-  const natural = el.scrollWidth;
-  if (natural > avail && avail > 0) {
-    const base = parseFloat(getComputedStyle(el).fontSize) || 22;
-    el.style.fontSize = `${Math.max(7, Math.floor(base * avail / natural))}px`;
-  }
 }
 
 function closeGameOver() {
@@ -899,7 +957,6 @@ const hooks = {
       updateStats();
       saveGame(); // persist the board after every successful placement
       recordBestScore(); // keep today's stored best up to the running peak
-      logBoardAscii();
       celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
       if (game.bank.length === 0) {
         setMessage(`Daily puzzle complete — final score ${commafy(game.score)}.`);

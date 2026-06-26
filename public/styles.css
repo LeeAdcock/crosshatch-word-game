@@ -330,19 +330,15 @@ body {
    a centered preformatted block. The whole thing is a click target that copies
    the shareable result. */
 .gameover-board {
-  display: inline-block;
+  display: block;
   margin: 0 auto;
-  padding: 12px 16px;
-  border: 2px solid var(--ink);
-  background: var(--paper);
-  font-size: 22px;
-  line-height: 1;
-  letter-spacing: 1px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px var(--modal-shadow);
   cursor: pointer;
   user-select: none;
   transition: transform 0.1s ease;
-  max-width: 100%;     /* JS auto-fits font-size; this is the safety net */
-  overflow-x: auto;    /* if a board is still too wide, scroll rather than clip */
+  max-width: 50%;      /* the canvas renders full-res; show it small on-screen (the copied image is full size) */
+  height: auto;        /* keep the aspect ratio while constrained by max-width */
 }
 .gameover-board:hover { transform: scale(1.03); }
 .gameover-board:active { transform: scale(0.98); }
