@@ -65,6 +65,39 @@ const seenBankIds = new Set();
 
 const cellElAt = (r, c) => cellEls.get(`${r},${c}`);
 
+// localStorage key for the in-progress board. The saved snapshot carries the day's
+// seed so a board from a previous day is discarded rather than restored (see loadGame).
+const STORAGE_KEY = 'crosshatch_game';
+
+// Persist the current game (board, bank, score, RNG position) so a refresh or an
+// accidental navigation restores exactly where the player left off. Best-effort:
+// localStorage may be unavailable (private mode) or full, so failures are ignored.
+function saveGame() {
+  if (!game) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(game.serialize()));
+  } catch {}
+}
+
+// Read a saved game, but only if it belongs to today's puzzle — a board from a
+// previous day is stale, so it's dropped and a fresh board is dealt instead.
+// Returns the snapshot to restore, or null to start fresh.
+function loadGame() {
+  let saved;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    saved = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!saved || saved.seedStr !== Game.todaySeed()) {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    return null;
+  }
+  return saved;
+}
+
 // Crossword numbering: a filled cell is numbered when it begins an across word
 // (no filled cell to its left, a filled cell to its right) and/or a down word
 // (no filled cell above, a filled cell below). Numbers run in reading order.
@@ -762,6 +795,7 @@ const hooks = {
       refreshBoard();
       renderBank();
       updateStats();
+      saveGame(); // persist the board after every successful placement
       logBoardAscii();
       celebratePlacement(result.cells, result.gained, result.combo, result.placedBonus);
       if (game.bank.length === 0) {
@@ -805,6 +839,7 @@ function startWordMove(downEvt, cellEl, axis) {
       game.commitMove(run, nr, nc, no);
       refreshBoard();
       updateStats();
+      saveGame();
       celebratePlacement(game.grid.cellsFor(run.word, nr, nc, no), game.score - before);
       setMessage('');
     },
@@ -880,8 +915,10 @@ function initBoardPointer(wrap) {
 
 // Start (or restart) the current day's game: fresh board, bank, and score, then
 // render centered on the seed word. Safe to call repeatedly (the Restart button).
-function startGame() {
-  game = new Game();
+// With a `saved` snapshot (from loadGame on boot) the prior in-progress board is
+// restored instead of dealing fresh; the Restart button passes nothing for a reset.
+function startGame(saved = null) {
+  game = new Game(undefined, saved);
   deadlocked = false;
   hasInteracted = false; // a fresh game re-centers on resize until the player acts
   seenBankIds.clear();
@@ -890,6 +927,7 @@ function startGame() {
   renderBank();
   updateStats();
   setMessage('');
+  saveGame(); // persist the starting (or restored) board immediately
 
   // Render once layout is known, centered on the seed word, filling the viewport.
   requestAnimationFrame(() => {
@@ -929,7 +967,8 @@ async function boot() {
     requestAnimationFrame(centerOnSeed);
   });
 
-  startGame();
+  // Restore today's in-progress board if one was saved; otherwise deal a fresh one.
+  startGame(loadGame());
 }
 
 boot();

@@ -19,27 +19,39 @@ function isLikelyPlural(word) {
 }
 
 // Deterministic PRNG (fnv-1a hash → mulberry32) seeded from a string, so a given
-// seed always produces the same board.
-function makeRng(seedStr) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < seedStr.length; i++) {
-    h ^= seedStr.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+// seed always produces the same board. An optional numeric `state` resumes the
+// generator mid-stream (used to restore a saved game so its future draws — the
+// lazily-dealt bank words — match exactly where the player left off). The returned
+// function carries a `.state()` reading its current internal value for saving.
+function makeRng(seedStr, state) {
+  let a;
+  if (typeof state === 'number') {
+    a = state >>> 0;
+  } else {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < seedStr.length; i++) {
+      h ^= seedStr.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    a = h >>> 0;
   }
-  let a = h >>> 0;
-  return function () {
+  const next = function () {
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  next.state = () => a >>> 0;
+  return next;
 }
 
 class Game {
-  // `seed` defaults to today's date, so each day plays the same board.
-  constructor(seed = Game.todaySeed()) {
-    this.seedStr = seed; // the seed string (a date by default), used in the share text
-    this.rng = makeRng(seed);
+  // `seed` defaults to today's date, so each day plays the same board. When `saved`
+  // (a `serialize()` snapshot) is supplied, the board, bank, score, and RNG position
+  // are restored from it instead of dealing a fresh board.
+  constructor(seed = Game.todaySeed(), saved = null) {
+    this.seedStr = saved ? saved.seedStr : seed; // seed string (a date by default), used in the share text
+    this.rng = makeRng(this.seedStr, saved ? saved.rngState : undefined);
     this.grid = new Grid();
     this.bank = []; // array of { id, word }
     this.score = 0;
@@ -58,7 +70,45 @@ class Game {
     }
     this.lengths = Object.keys(this.buckets).map(Number).sort((a, b) => a - b);
 
-    this.seed();
+    if (saved) this.loadSaved(saved);
+    else this.seed();
+  }
+
+  // Restore per-game state from a serialize() snapshot. The buckets/lengths and RNG
+  // were already set up in the constructor; this overlays the saved board and counters.
+  loadSaved(saved) {
+    for (const [key, letter] of saved.cells) this.grid.cells.set(key, letter);
+    this.bank = saved.bank.map((b) => ({ ...b }));
+    this.score = saved.score;
+    this.wordsPlaced = saved.wordsPlaced;
+    this.nextId = saved.nextId;
+    this.bonus = saved.bonus;
+    this.drawn = saved.drawn;
+    this.used = new Set(saved.used);
+    this.maxWords = saved.maxWords;
+    this.bonusCells = new Set(saved.bonusCells);
+    this.seedCells = saved.seedCells;
+  }
+
+  // A plain-object snapshot of the whole game, suitable for JSON + localStorage.
+  // `rngState` lets a restored game continue dealing the same future bank words;
+  // `seedStr` records which day's puzzle this is so a stale board isn't restored.
+  serialize() {
+    return {
+      seedStr: this.seedStr,
+      rngState: this.rng.state(),
+      cells: [...this.grid.cells], // [["row,col", letter], ...]
+      bank: this.bank,
+      score: this.score,
+      wordsPlaced: this.wordsPlaced,
+      nextId: this.nextId,
+      bonus: this.bonus,
+      drawn: this.drawn,
+      used: [...this.used],
+      maxWords: this.maxWords,
+      bonusCells: [...this.bonusCells],
+      seedCells: this.seedCells,
+    };
   }
 
   // Date string "YYYY-M-D" used as the default daily seed.
