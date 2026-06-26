@@ -6,7 +6,11 @@ const bankEl = document.getElementById('bank');
 const scoreEl = document.getElementById('score');
 const wordsEl = document.getElementById('words');
 const messageEl = document.getElementById('message');
+const taglineEl = document.getElementById('tagline');
 const restartBtn = document.getElementById('restart-btn');
+
+// The default header tagline, restored on non-holiday days.
+const DEFAULT_TAGLINE = taglineEl ? taglineEl.textContent : '';
 
 // End-of-game dialog elements.
 const gameoverEl = document.getElementById('gameover');
@@ -1084,12 +1088,21 @@ function initBoardPointer(wrap) {
   });
 }
 
+// On a holiday, announce the theme in the header tagline (e.g. "🎃 Halloween —
+// themed words today"); otherwise restore the default tagline.
+function updateTagline() {
+  if (!taglineEl) return;
+  const h = game && game.holiday;
+  taglineEl.textContent = h ? `${h.emoji} ${h.name} — themed words today` : DEFAULT_TAGLINE;
+}
+
 // Start (or restart) the current day's game: fresh board, bank, and score, then
 // render centered on the seed word. Safe to call repeatedly (the Restart button).
 // With a `saved` snapshot (from loadGame on boot) the prior in-progress board is
 // restored instead of dealing fresh; the Restart button passes nothing for a reset.
 function startGame(saved = null) {
   game = new Game(undefined, saved);
+  updateTagline();
   deadlocked = false;
   preGameBest = bestForToday(); // remember the day's best before this attempt scores
   zoomScale = 1;             // a fresh/restarted game starts at the default zoom

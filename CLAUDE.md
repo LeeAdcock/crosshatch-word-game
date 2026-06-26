@@ -39,8 +39,8 @@ with **no game logic** — all logic is client-side under `public/js/`.
 There is no module system. Each file in `public/js/` defines classes/functions and
 attaches them to `window` (e.g. `window.Grid`, `window.validatePlacement`,
 `window.isWord`). `index.html` loads scripts in **strict dependency order**:
-`words → dictionary → grid → placement → bonus → game → drag → main → instructions →
-theme`. Adding a new file means inserting a `<script>` tag in the right position;
+`words → dictionary → grid → placement → bonus → holidays → game → drag → main →
+instructions → theme`. Adding a new file means inserting a `<script>` tag in the right position;
 cross-file calls go through `window.*`. (`theme.js` is also bootstrapped by a tiny
 inline `<head>` script that sets `data-theme` before first paint — see Theming.)
 
@@ -99,6 +99,17 @@ separate, smaller list of common words.
   `MAX_WORDS`), so `drawn` hits the cap by the 15th placement — meaning **exactly two
   gifts per game, after the 5th and 10th word.** Because it's derived from the
   player's board, the gift differs per player even on the shared daily seed.
+- **Holiday themes (`holidays.js`):** ~26 American holidays each define a curated
+  themed word list. `holidayFor(seedStr)` parses the daily seed date (`"YYYY-M-D"`)
+  and returns the matching holiday's `{ id, name, emoji, words }` (or null), computing
+  both fixed dates and floating ones (Thanksgiving = 4th Thu Nov, Memorial Day = last
+  Mon May, Easter via computus, Mardi Gras = Easter−47, …). The `Game` constructor
+  filters the themed words to the dictionary — every placed run must be a real word —
+  and uses them as the bank `pool` instead of `BANK_POOL`, falling back to the normal
+  pool if fewer than `MIN_THEME_WORDS` survive. `this.holiday` is persisted in
+  `serialize()` and surfaced by `main.js`'s `updateTagline()` in the header. Bonus
+  words are still board-derived (full dictionary), and the board is still the shared
+  daily seed — only the bank changes on a holiday.
 - **Deadlock + hint:** `anyPlaceable()` / `candidateAnchors()` detect when no bank
   word fits anywhere (strikes the bank through). `findHint()` returns the best legal
   placement (most crossings); its UI button exists but is hidden by default.
@@ -141,7 +152,8 @@ currently-disabled feature of dragging an already-placed word.
 ## Tunables
 
 Constants live at the top of their modules: `BANK_SIZE` / `MAX_WORDS` / `BONUS_EVERY`
-(`game.js`), `LETTER_SCORES` (`dictionary.js`), `MIN_BONUS_LEN` / `MAX_BONUS_LEN`
+/ `MIN_THEME_WORDS` (`game.js`), the `HOLIDAYS` table (`holidays.js`),
+`LETTER_SCORES` (`dictionary.js`), `MIN_BONUS_LEN` / `MAX_BONUS_LEN`
 (`bonus.js`), `CELL` size (`drag.js`, must match `--cell` in `styles.css`), and
 `VIEW_BUFFER` / `RECENTER_AT` / `PITCH` for rendering (`main.js`). Theme colors are
 all CSS variables in `styles.css` (`:root` light defaults + `[data-theme="dark"]`).

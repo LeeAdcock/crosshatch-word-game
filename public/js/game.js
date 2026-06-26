@@ -3,6 +3,7 @@
 const BANK_SIZE = 10;
 const MAX_WORDS = 25; // a game offers at most this many words (a daily puzzle)
 const BONUS_EVERY = 5; // every Nth placement earns a board-derived bonus word
+const MIN_THEME_WORDS = 24; // a holiday theme needs at least this many valid words to be used
 const PLURAL_WEIGHT = 0.3; // plurals are drawn at ~30% their natural rate (reduced, not removed)
 
 // Heuristic: a word is "likely plural" if stripping its plural ending leaves a
@@ -63,9 +64,23 @@ class Game {
     this.maxWords = MAX_WORDS;
     this.bonusCells = new Set(); // "row,col" keys of placed bonus-word letters (rendered yellow)
 
+    // On a recognized holiday, deal from a curated themed word list instead of the
+    // common pool (see holidays.js). Themed words are filtered to the dictionary so
+    // every placed run is a real word; if too few survive to fill a game we ignore
+    // the theme and fall back to the normal pool. `this.holiday` (or null) is read
+    // by the UI to label the day; `this.pool` is the active source for draws.
+    this.holiday = (saved && 'holiday' in saved) ? saved.holiday
+      : (window.holidayFor ? window.holidayFor(this.seedStr) : null);
+    this.pool = window.BANK_POOL;
+    if (this.holiday) {
+      const themed = this.holiday.words.filter((w) => window.DICTIONARY.has(w));
+      if (themed.length >= MIN_THEME_WORDS) this.pool = themed;
+      else this.holiday = null;
+    }
+
     // Bucket the bank pool by word length so we can guarantee variety.
     this.buckets = {};
-    for (const w of window.BANK_POOL) {
+    for (const w of this.pool) {
       (this.buckets[w.length] = this.buckets[w.length] || []).push(w);
     }
     this.lengths = Object.keys(this.buckets).map(Number).sort((a, b) => a - b);
@@ -108,6 +123,7 @@ class Game {
       maxWords: this.maxWords,
       bonusCells: [...this.bonusCells],
       seedCells: this.seedCells,
+      holiday: this.holiday,
     };
   }
 
@@ -122,7 +138,7 @@ class Game {
   // word of that length has been used (won't happen within the 25-word cap).
   // Plurals are down-weighted (not excluded) so fewer reach the bank.
   drawWord(length) {
-    const pool = length ? this.buckets[length] : window.BANK_POOL;
+    const pool = length ? this.buckets[length] : this.pool;
     let candidates = pool.filter((w) => !this.used.has(w));
     if (candidates.length === 0) candidates = pool;
     const word = this.weightedPick(candidates);
