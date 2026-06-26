@@ -691,7 +691,7 @@ function celebratePlacement(cells, gained, combo, isBonus) {
   if (combo) {
     const label = document.createElement('div');
     label.className = 'combo-pop';
-    label.textContent = `${comboLabel(combo.count)} +${combo.bonus}`;
+    label.textContent = comboLabel(combo.count);
     label.style.left = `${rect.left + rect.width / 2}px`;
     label.style.top = `${rect.top - 26}px`;
     document.body.appendChild(label);

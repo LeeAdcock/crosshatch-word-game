@@ -5,6 +5,11 @@ const MAX_WORDS = 25; // a game offers at most this many words (a daily puzzle)
 const BONUS_EVERY = 5; // every Nth placement earns a board-derived bonus word
 const MIN_THEME_WORDS = 24; // a holiday theme needs at least this many valid words to be used
 const PLURAL_WEIGHT = 0.3; // plurals are drawn at ~30% their natural rate (reduced, not removed)
+// Scoring is purely geometric: density × interconnection × progress (see computeScore).
+// Letter values play no part — everyone places the same words, so what differs is how
+// tightly and how interlocked the board is, which is what we want to measure.
+const SCORE_SCALE = 220;    // tunes the score into readable whole numbers (~2500–3000 for strong play)
+const INTERLOCK_BASE = 0.5; // floor on the interconnection factor, so density still counts when crossings are sparse
 
 // Heuristic: a word is "likely plural" if stripping its plural ending leaves a
 // real word — cats→cat, boxes→box, berries→berry. Excludes -ss/-us/-is endings
@@ -58,7 +63,7 @@ class Game {
     this.score = 0;
     this.wordsPlaced = 0;
     this.nextId = 1;
-    this.bonus = 0; // accumulated combo bonus, added on top of the density score
+    this.crossings = 0; // cumulative true crossings (a placed letter landing on an existing one)
     this.drawn = 0; // total bank words ever dealt; capped at MAX_WORDS
     this.used = new Set(); // every word dealt this game, so none repeats
     this.maxWords = MAX_WORDS;
@@ -94,15 +99,20 @@ class Game {
   loadSaved(saved) {
     for (const [key, letter] of saved.cells) this.grid.cells.set(key, letter);
     this.bank = saved.bank.map((b) => ({ ...b }));
-    this.score = saved.score;
     this.wordsPlaced = saved.wordsPlaced;
     this.nextId = saved.nextId;
-    this.bonus = saved.bonus;
+    // `crossings` was added with the geometric scoring; an older in-progress save
+    // won't have it, so estimate it from the board (slightly high, but transient).
+    this.crossings = (typeof saved.crossings === 'number') ? saved.crossings : this.estimateCrossings();
     this.drawn = saved.drawn;
     this.used = new Set(saved.used);
     this.maxWords = saved.maxWords;
     this.bonusCells = new Set(saved.bonusCells);
     this.seedCells = saved.seedCells;
+    // Score is a pure function of board + crossings + words, so recompute it: this is
+    // identical to saved.score for a current save, and migrates a legacy save (whose
+    // saved.score used the old letter-value formula) onto the new geometric scale.
+    this.score = this.computeScore();
   }
 
   // A plain-object snapshot of the whole game, suitable for JSON + localStorage.
@@ -117,7 +127,7 @@ class Game {
       score: this.score,
       wordsPlaced: this.wordsPlaced,
       nextId: this.nextId,
-      bonus: this.bonus,
+      crossings: this.crossings,
       drawn: this.drawn,
       used: [...this.used],
       maxWords: this.maxWords,
@@ -355,14 +365,6 @@ class Game {
     this.score = this.computeScore();
   }
 
-  // Sum of Scrabble letter values over every filled cell (each cell once, so
-  // crossing letters are not double-counted).
-  boardLetterSum() {
-    let sum = 0;
-    for (const letter of this.grid.cells.values()) sum += window.LETTER_SCORES[letter] || 0;
-    return sum;
-  }
-
   // Cells in the bounding box of the filled area (filled + empty cells inside).
   boundingArea() {
     const b = this.grid.bounds();
@@ -370,27 +372,43 @@ class Game {
     return (b.maxR - b.minR + 1) * (b.maxC - b.minC + 1);
   }
 
-  // Point density: total letter value per bounding-box cell. Packing high-value
-  // letters tightly raises it; spreading words out lowers it.
-  density() {
+  // Density: filled cells per bounding-box cell (the fill ratio, 0–1). Packing
+  // words tightly raises it; sprawling them out lowers it. Letter-agnostic — the
+  // words are the same for everyone, so only the packing differs.
+  fillRatio() {
     const area = this.boundingArea();
-    return area ? this.boardLetterSum() / area : 0;
+    return area ? this.grid.cells.size / area : 0;
   }
 
-  // The score rewards both efficient packing and progress, scaled ×100 for
-  // readable whole numbers, plus accumulated multi-word combo bonuses.
+  // Interconnection: average true crossings per placed word. `crossings` counts
+  // only a placed letter landing on an existing one (real interlock); incidental
+  // words formed by parallel abutment don't overlap and so don't count here.
+  interlock() {
+    return this.wordsPlaced ? this.crossings / this.wordsPlaced : 0;
+  }
+
+  // The score multiplies density by interconnection by progress: it climbs only
+  // when the board is BOTH tightly packed AND well-threaded, and is unmoved by
+  // which (high- or low-value) letters happen to be on it. INTERLOCK_BASE keeps
+  // density contributing even on a board with few crossings.
   computeScore() {
-    return (this.density() / 0.5) * this.wordsPlaced * 100 + this.bonus;
+    return SCORE_SCALE * this.fillRatio() * (INTERLOCK_BASE + this.interlock()) * this.wordsPlaced;
   }
 
-  // Bonus for a placement that forms `count` words at once (triangular growth):
-  // 2 → 50, 3 → 150, 4 → 300, 5 → 500. One word forms no combo.
-  static comboBonus(count) {
-    return count >= 2 ? 50 * (count * (count - 1) / 2) : 0;
+  // Board-derived estimate of cumulative crossings, used only to restore an older
+  // save that predates the `crossings` counter: every cell where a horizontal and
+  // a vertical word both pass. (Slightly high — it also catches abutment crosses —
+  // but it's corrected the moment the next placement recomputes from the counter.)
+  estimateCrossings() {
+    let n = 0;
+    for (const [r, c] of this.grid.entries()) {
+      if (this.grid.horizontalRun(r, c).length >= 2 && this.grid.verticalRun(r, c).length >= 2) n++;
+    }
+    return n;
   }
 
-  // Commit a placement: write to board, recompute the density score, refill the
-  // bank slot. Returns { ok, gained, score } or { ok: false, reason }.
+  // Commit a placement: write to board, bank its crossings, recompute the score, and
+  // refill the bank slot. Returns { ok, gained, score } or { ok: false, reason }.
   place(id, row, col, orientation) {
     const item = this.bankItem(id);
     if (!item) return { ok: false, reason: 'Unknown word' };
@@ -408,25 +426,11 @@ class Game {
     // with words it crosses — so the whole bonus word is visibly highlighted.
     if (wasBonus) for (const { row: r, col: c } of placedCells) this.bonusCells.add(`${r},${c}`);
 
-    // Count the words this placement formed; reward forming several at once.
+    // Count the words this placement formed (for the combo celebration) and bank
+    // its true crossings — letters that landed on existing ones — toward the score's
+    // interconnection factor. `result.crossings` came from validatePlacement.
     const formed = this.grid.formedWords(placedCells, newlyFilled);
-    const comboBonus = Game.comboBonus(formed.length);
-
-    // On top of the count-based combo bonus, award the Scrabble letter value of the
-    // additional words this placement generated — the perpendicular cross words. Each
-    // runs through one newly-filled cell, perpendicular to the placement (the word
-    // along the placement's own axis is the one you placed, not an "extra"), so they
-    // sit on distinct lines and never double-count.
-    const perpRun = orientation === 'h'
-      ? (r, c) => this.grid.verticalRun(r, c)
-      : (r, c) => this.grid.horizontalRun(r, c);
-    let crossWordValue = 0;
-    for (const { row: r, col: c } of newlyFilled) {
-      const run = perpRun(r, c);
-      if (run.length >= 2) crossWordValue += window.wordScore(run);
-    }
-
-    this.bonus += comboBonus + crossWordValue;
+    this.crossings += result.crossings || 0;
     this.wordsPlaced++;
     this.score = this.computeScore();
 
@@ -455,7 +459,7 @@ class Game {
       gained: this.score - before,
       score: this.score,
       cells: placedCells,
-      combo: formed.length >= 2 ? { count: formed.length, bonus: comboBonus + crossWordValue } : null,
+      combo: formed.length >= 2 ? { count: formed.length } : null,
       placedBonus: wasBonus, // this placement was a bonus word (flash its connections yellow)
       bonusAdded,            // this placement earned a NEW bonus word
       bonusForfeited,        // this placement removed an unused bonus word

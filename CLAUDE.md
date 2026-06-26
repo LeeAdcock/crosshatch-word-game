@@ -84,14 +84,20 @@ separate, smaller list of common words.
 - **Length-varied bank:** the bank pool is bucketed by word length; `varietyLength`
   refills the slot whose length is furthest below its target, keeping a spread of
   lengths. A game deals at most `MAX_WORDS`.
-- **Density scoring:** `computeScore` rewards packing high-value (Scrabble) letters
-  tightly — `boardLetterSum / boundingArea`, scaled by words placed, plus a running
-  `bonus`. Each placement adds to `bonus` a count-based combo reward for forming
-  multiple words at once (`comboBonus`) **plus the Scrabble letter value of the extra
-  perpendicular cross words it generates** (the word along the placement's own axis is
-  the one you placed, so it isn't counted as a cross word). `formedWords` distinguishes
-  words a placement *creates/extends* (has a new tile) from words it merely crosses
-  (no new tile).
+- **Geometric scoring:** `computeScore` is purely geometric and letter-agnostic —
+  `SCORE_SCALE × fillRatio × (INTERLOCK_BASE + interlock) × wordsPlaced`. It rewards
+  the two things skill actually controls: **density** (`fillRatio` = filled cells /
+  `boundingArea`) and **interconnection** (`interlock` = cumulative `crossings` per
+  word). Because density and interconnection *multiply*, a high score requires the
+  board to be **both** tightly packed **and** well-threaded. `crossings` counts only
+  *true* interlock — a placed letter landing on an existing one (`validatePlacement`'s
+  `crossings`) — so words formed incidentally by parallel abutment don't inflate it.
+  Letter (Scrabble) values play no part: everyone places the same words, so the letter
+  mix is near-constant and was found to mildly *reward* sprawl, the opposite of intent.
+  `crossings` is accumulated in `place()` and persisted; `estimateCrossings()` only
+  exists to migrate a pre-geometric save (it's recomputed from the board, slightly
+  high). `formedWords` still distinguishes words a placement *creates/extends* from
+  ones it merely crosses, and now feeds only the combo *celebration*, not the score.
 - **Gift/bonus words (`bonus.js`):** `deriveBonusWord(grid, used)` searches the
   *current board* for the best-fitting unused dictionary word (most connections, then
   Scrabble value) and is offered as an amber bank tile. `BONUS_EVERY = 5` triggers an
@@ -152,8 +158,8 @@ currently-disabled feature of dragging an already-placed word.
 ## Tunables
 
 Constants live at the top of their modules: `BANK_SIZE` / `MAX_WORDS` / `BONUS_EVERY`
-/ `MIN_THEME_WORDS` (`game.js`), the `HOLIDAYS` table (`holidays.js`),
-`LETTER_SCORES` (`dictionary.js`), `MIN_BONUS_LEN` / `MAX_BONUS_LEN`
+/ `MIN_THEME_WORDS` / `SCORE_SCALE` / `INTERLOCK_BASE` (`game.js`), the `HOLIDAYS`
+table (`holidays.js`), `LETTER_SCORES` (`dictionary.js`), `MIN_BONUS_LEN` / `MAX_BONUS_LEN`
 (`bonus.js`), `CELL` size (`drag.js`, must match `--cell` in `styles.css`), and
 `VIEW_BUFFER` / `RECENTER_AT` / `PITCH` for rendering (`main.js`). Theme colors are
 all CSS variables in `styles.css` (`:root` light defaults + `[data-theme="dark"]`).
